@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ChatRequestSchema, type ChatApiFailure } from "@/lib/agent/chat-contract";
 import { AgentTurnError, runAgentTurn } from "@/lib/agent/agent";
 import { checkRateLimit } from "@/lib/agent/rate-limit";
+import { resolveClientIp } from "@/lib/agent/client-ip";
 
 export const maxDuration = 60;
 
@@ -27,16 +28,10 @@ const RATE_LIMIT = Math.min(
 );
 const RATE_WINDOW_MS = 60_000;
 
-const USER_ID_COOKIE = "shopmate_uid";
+/** Hard cap on the request body: the largest valid chat request is ~35 KB. */
+const MAX_BODY_BYTES = 64 * 1024;
 
-function clientIp(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return request.headers.get("x-real-ip") ?? "unknown";
-}
+const USER_ID_COOKIE = "shopmate_uid";
 
 function failure(
   body: ChatApiFailure,
@@ -47,6 +42,51 @@ function failure(
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limit BEFORE reading the body: headers are available without
+  // buffering the payload, so garbage floods are rejected cheaply. Invalid
+  // requests consume budget too — that is the point.
+  const limit = checkRateLimit(resolveClientIp(request.headers), {
+    limit: RATE_LIMIT,
+    windowMs: RATE_WINDOW_MS,
+  });
+  if (!limit.allowed) {
+    return failure(
+      {
+        success: false,
+        error: "rate_limited",
+        message: "Too many chat requests — slow down for a moment.",
+        retryAfterSec: limit.retryAfterSec,
+      },
+      429,
+      { "Retry-After": String(limit.retryAfterSec) },
+    );
+  }
+
+  // Bound the body before parsing it: route handlers have no default size
+  // cap, so an unbounded JSON.parse is a cheap memory/CPU exhaustion vector.
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_BODY_BYTES) {
+    return failure(
+      {
+        success: false,
+        error: "invalid_request",
+        message: "Request body too large.",
+      },
+      400,
+    );
+  }
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return failure(
+      {
+        success: false,
+        error: "invalid_request",
+        message: "Content-Type must be application/json.",
+      },
+      400,
+    );
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -72,21 +112,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ip = clientIp(request);
-  const limit = checkRateLimit(ip, { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS });
-  if (!limit.allowed) {
-    return failure(
-      {
-        success: false,
-        error: "rate_limited",
-        message: "Too many chat requests — slow down for a moment.",
-        retryAfterSec: limit.retryAfterSec,
-      },
-      429,
-      { "Retry-After": String(limit.retryAfterSec) },
-    );
-  }
-
   const userId =
     request.cookies.get(USER_ID_COOKIE)?.value || undefined;
 
@@ -100,6 +125,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AgentTurnError) {
+      // The client gets a generic message; the server keeps the real cause.
+      console.error("[/api/chat] agent turn failed:", error.message);
       return failure(
         {
           success: false,

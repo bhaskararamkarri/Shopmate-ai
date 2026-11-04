@@ -106,7 +106,10 @@ function compactProduct(product: Product) {
 
 /** Wraps catalog payload in explicit delimiters: untrusted data, not instructions. */
 function catalogData(payload: unknown): string {
-  return `<catalog-data>\n${JSON.stringify(payload)}\n</catalog-data>`;
+  // Escape '<' so merchant-controlled content cannot close the delimiter
+  // early ("\u003c" is valid JSON and decodes back to '<' on parse).
+  const serialized = JSON.stringify(payload).replace(/</g, "\\u003c");
+  return `<catalog-data>\n${serialized}\n</catalog-data>`;
 }
 
 const BUDGET_EXHAUSTED = { error: "budget_exhausted" as const };

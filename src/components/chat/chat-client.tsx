@@ -16,23 +16,9 @@ import {
 } from "@/lib/chat-store";
 import { registerProducts } from "@/lib/store";
 import { sendChatMessage } from "@/lib/chat-api";
+import { buildHistory } from "@/lib/chat-history";
 import type { ShoppingIntentSummary } from "@/types";
 import type { ChatApiFailure, ChatApiSuccess } from "@/lib/agent/chat-contract";
-
-/** History window sent with each turn — matches the server's validation bound. */
-const MAX_HISTORY = 16;
-const MAX_HISTORY_ITEM_LENGTH = 2000;
-
-function buildHistory(messages: UiMessage[]) {
-  return messages
-    .filter((message) => !message.pending && !message.error)
-    .slice(-MAX_HISTORY)
-    .map((message) => ({
-      role: message.role === "user" ? ("user" as const) : ("assistant" as const),
-      content: message.content.slice(0, MAX_HISTORY_ITEM_LENGTH),
-    }))
-    .filter((entry) => entry.content.length > 0);
-}
 
 /** Maps a typed API failure to an honest assistant row, with retry where useful. */
 function failureReply(failure: ChatApiFailure, query: string) {
@@ -97,6 +83,10 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // History must be captured BEFORE the user message is appended: the
+    // message travels separately as `message`, and including it in both
+    // places would send the identical turn to the model twice.
+    const history = buildHistory(chatStore.getSnapshot());
     chatStore.append({
       id: newMessageId(),
       role: "user",
@@ -109,7 +99,7 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     try {
       result = await sendChatMessage({
         conversationId: getConversationId(),
-        history: buildHistory(chatStore.getSnapshot()),
+        history,
         message: query,
         intent: intentRef.current ?? undefined,
         signal: controller.signal,
