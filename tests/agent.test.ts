@@ -11,7 +11,12 @@ vi.mock("@ai-sdk/google", async (importOriginal) => {
     createGoogle: vi.fn((...args: Parameters<typeof actual.createGoogle>) => {
       if (process.env.SHOPMATE_FAIL_MODEL === "1") {
         return () => {
-          throw new Error("simulated model failure");
+          const failure = new Error("simulated model failure");
+          const status = Number(process.env.SHOPMATE_FAIL_STATUS ?? "");
+          if (Number.isFinite(status) && status > 0) {
+            (failure as Error & { statusCode?: number }).statusCode = status;
+          }
+          throw failure;
         };
       }
       return actual.createGoogle(...args);
@@ -68,6 +73,7 @@ function setEnv(overrides: Record<string, string | undefined>) {
     "SHOPMATE_AI_PROVIDER",
     "SHOPMATE_AI_MODEL",
     "SHOPMATE_FAIL_MODEL",
+    "SHOPMATE_FAIL_STATUS",
   ]) {
     if (overrides[key] === undefined) delete process.env[key];
     else process.env[key] = overrides[key];
@@ -233,6 +239,7 @@ describe("runAgentTurn — error mapping", () => {
   afterEach(() => {
     setEnv({});
     delete process.env.SHOPMATE_FAIL_MODEL;
+    delete process.env.SHOPMATE_FAIL_STATUS;
   });
 
   it("maps a model failure to ai_unavailable", async () => {
@@ -246,5 +253,26 @@ describe("runAgentTurn — error mapping", () => {
     await expect(
       runAgentTurn({ history: [], message: "hello" }, {}),
     ).rejects.toMatchObject({ code: "ai_unavailable" });
+  });
+
+  it("carries the upstream HTTP status on ai_unavailable for server-side diagnostics", async () => {
+    setEnv({
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+      SHOPMATE_FAIL_MODEL: "1",
+      SHOPMATE_FAIL_STATUS: "401",
+    });
+    await expect(
+      runAgentTurn({ history: [], message: "hello" }, {}),
+    ).rejects.toMatchObject({ code: "ai_unavailable", upstreamStatus: 401 });
+  });
+
+  it("leaves upstreamStatus undefined when the failure has no status", async () => {
+    setEnv({
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+      SHOPMATE_FAIL_MODEL: "1",
+    });
+    await expect(
+      runAgentTurn({ history: [], message: "hello" }, {}),
+    ).rejects.toMatchObject({ code: "ai_unavailable", upstreamStatus: undefined });
   });
 });

@@ -40,6 +40,8 @@ export class AgentTurnError extends Error {
   constructor(
     readonly code: "ai_unavailable",
     message: string,
+    /** Upstream HTTP status when the failure came from an API response. */
+    readonly upstreamStatus?: number,
   ) {
     super(message);
     this.name = "AgentTurnError";
@@ -268,9 +270,13 @@ export async function runAgentTurn(
     });
   } catch (error) {
     if (error instanceof AgentTurnError) throw error;
+    // Carry only sanitized fields: message and status. Never the request
+    // body or headers — those can contain the API key.
+    const status = (error as { statusCode?: unknown } | null)?.statusCode;
     throw new AgentTurnError(
       "ai_unavailable",
       error instanceof Error ? error.message : "model request failed",
+      typeof status === "number" ? status : undefined,
     );
   }
 }

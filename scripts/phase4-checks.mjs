@@ -313,6 +313,18 @@ async function main() {
     check("12: first turn returns 200", first.status === 200);
     assertChatShape("12.first", first.payload);
 
+    // The follow-up needs the first turn's reply text as history. When the
+    // first turn failed there is no reply — sending an empty history entry
+    // would only produce a misleading 400, so report the real cause instead.
+    if (!first.payload?.success) {
+      check(
+        "12: follow-up skipped because the first turn failed",
+        false,
+        `first turn status=${first.status}; not sending an empty-content follow-up`,
+      );
+      return;
+    }
+
     const second = await postChat("/api/chat", {
       conversationId: id,
       history: [

@@ -35,6 +35,14 @@ describe("provider configuration", () => {
     expect(resolveChatModel()).toBeNull();
   });
 
+  it("treats a whitespace-only key as unconfigured", () => {
+    // Regression pin: env values are trimmed before use, so an accidental
+    // trailing space (or a blank value) never reaches Google as a key.
+    setEnv({ GOOGLE_GENERATIVE_AI_API_KEY: "   " });
+    expect(isAIConfigured()).toBe(false);
+    expect(resolveChatModel()).toBeNull();
+  });
+
   it("accepts the AI SDK default Google key", () => {
     setEnv({ GOOGLE_GENERATIVE_AI_API_KEY: "test-key" });
     expect(isAIConfigured()).toBe(true);

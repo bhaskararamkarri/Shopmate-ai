@@ -125,8 +125,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AgentTurnError) {
-      // The client gets a generic message; the server keeps the real cause.
-      console.error("[/api/chat] agent turn failed:", error.message);
+      // The client gets a generic message; the server keeps the sanitized
+      // cause (message + upstream status, never request bodies or headers).
+      console.error(
+        "[/api/chat] agent turn failed:",
+        typeof error.upstreamStatus === "number"
+          ? `${error.message} (upstream HTTP ${error.upstreamStatus})`
+          : error.message,
+      );
       return failure(
         {
           success: false,
