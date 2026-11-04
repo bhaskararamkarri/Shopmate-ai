@@ -68,8 +68,6 @@ function makeCtx(overrides?: {
   };
 }
 
-type Ctx = ReturnType<typeof makeCtx>;
-
 async function call(
   tool: { execute?: unknown },
   input: unknown,
