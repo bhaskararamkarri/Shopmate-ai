@@ -5,9 +5,15 @@
  *
  * A deliberately small external store (no state-management library) backed by
  * `useSyncExternalStore`: the cart is a list of {productId, quantity} resolved
- * against the demo catalog, and the comparison is an ordered list of product
+ * against the product catalog, and the comparison is an ordered list of product
  * ids. Both persist to localStorage so the badge and contents survive
  * navigation and refresh.
+ *
+ * Record resolution: demo products come from the static demo catalog; live
+ * Channel3 records arrive inside API responses and are registered in a
+ * module-level cache (`registerProducts`). Live lines also persist their
+ * product snapshot in storage so a cart/compare survives a reload without a
+ * refetch — the snapshot is a display-only cache, never an inventory truth.
  *
  * Storage is hydrated after mount (a no-op on the server snapshot), which
  * keeps the prerendered HTML stable and avoids hydration mismatches.
@@ -26,8 +32,8 @@ import {
 import type { CartItem, Product } from "@/types";
 import { DEMO_PRODUCT_MAP } from "@/lib/demo-catalog";
 
-const CART_STORAGE_KEY = "shopmate.cart.v2";
-const COMPARE_STORAGE_KEY = "shopmate.compare.v2";
+const CART_STORAGE_KEY = "shopmate.cart.v3";
+const COMPARE_STORAGE_KEY = "shopmate.compare.v3";
 
 /** Side-by-side space is capped so the comparison table stays readable. */
 export const MAX_COMPARE_ITEMS = 4;
@@ -45,24 +51,75 @@ interface ShopSnapshot {
 
 const EMPTY_SNAPSHOT: ShopSnapshot = { cart: [], compare: [] };
 
+/**
+ * Client-side cache of live product records seen from catalog API responses.
+ * Demo products never live here — they resolve statically from the catalog.
+ */
+const liveProducts = new Map<string, Product>();
+
+/**
+ * Registers products (typically from a search/lookup response) so cart and
+ * comparison actions can resolve live ids. Cheap and idempotent.
+ */
+export function registerProducts(products: readonly Product[]): void {
+  for (const product of products) {
+    if (product?.id && product.source === "channel3") {
+      liveProducts.set(product.id, product);
+    }
+  }
+}
+
+function resolveProduct(id: string): Product | undefined {
+  return DEMO_PRODUCT_MAP.get(id) ?? liveProducts.get(id);
+}
+
+/** Minimal shape check for a persisted live product snapshot. */
+function isPlausibleProduct(value: unknown): value is Product {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { id?: unknown; name?: unknown; price?: unknown; currency?: unknown };
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.price === "number" &&
+    Number.isFinite(candidate.price) &&
+    candidate.price >= 0 &&
+    typeof candidate.currency === "string"
+  );
+}
+
+interface StoredCartLine {
+  id: string;
+  quantity: number;
+  product?: Product;
+}
+
 function readCartFromStorage(): CartLine[] {
   try {
     const raw = window.localStorage.getItem(CART_STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (entry): entry is { id: string; quantity: number } =>
-          Boolean(
-            entry &&
-              typeof entry === "object" &&
-              typeof (entry as { id?: unknown }).id === "string" &&
-              typeof (entry as { quantity?: unknown }).quantity === "number" &&
-              DEMO_PRODUCT_MAP.has((entry as { id: string }).id) &&
-              (entry as { quantity: number }).quantity > 0,
-          ),
-      )
+    return (parsed as unknown[])
+      .filter((entry): entry is StoredCartLine => {
+        if (!entry || typeof entry !== "object") return false;
+        const candidate = entry as { id?: unknown; quantity?: unknown };
+        return (
+          typeof candidate.id === "string" &&
+          typeof candidate.quantity === "number" &&
+          candidate.quantity > 0
+        );
+      })
+      .filter((entry) => {
+        const persisted = entry.product;
+        // Live lines persist their snapshot; accept only plausible ones.
+        if (persisted !== undefined) {
+          if (!isPlausibleProduct(persisted) || persisted.id !== entry.id) {
+            return false;
+          }
+          liveProducts.set(persisted.id, persisted);
+        }
+        return resolveProduct(entry.id) !== undefined;
+      })
       .map((entry) => ({
         id: entry.id,
         quantity: Math.min(Math.round(entry.quantity), MAX_QUANTITY),
@@ -72,16 +129,43 @@ function readCartFromStorage(): CartLine[] {
   }
 }
 
+interface StoredCompare {
+  ids: string[];
+  products: Product[];
+}
+
 function readCompareFromStorage(): string[] {
   try {
     const raw = window.localStorage.getItem(COMPARE_STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed
+    // Legacy v2 shape: a bare array of demo ids.
+    if (parsed.every((entry) => typeof entry === "string")) {
+      return parsed
+        .filter(
+          (entry): entry is string =>
+            typeof entry === "string" && resolveProduct(entry) !== undefined,
+        )
+        .slice(0, MAX_COMPARE_ITEMS);
+    }
+    // v3 shape: ids plus snapshots for live records.
+    const stored = parsed.find(
+      (entry): entry is StoredCompare =>
+        Boolean(
+          entry &&
+            typeof entry === "object" &&
+            Array.isArray((entry as { ids?: unknown }).ids),
+        ),
+    );
+    if (!stored) return [];
+    for (const product of stored.products ?? []) {
+      if (isPlausibleProduct(product)) liveProducts.set(product.id, product);
+    }
+    return stored.ids
       .filter(
-        (entry): entry is string =>
-          typeof entry === "string" && DEMO_PRODUCT_MAP.has(entry),
+        (id): id is string =>
+          typeof id === "string" && resolveProduct(id) !== undefined,
       )
       .slice(0, MAX_COMPARE_ITEMS);
   } catch {
@@ -92,10 +176,28 @@ function readCompareFromStorage(): string[] {
 function persist(snapshot: ShopSnapshot, hydrated: boolean) {
   if (!hydrated) return;
   try {
-    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(snapshot.cart));
+    // Live lines persist a display-only product snapshot; demo lines are
+    // resolved statically on load.
+    const cartToStore = snapshot.cart.map(
+      (line): { id: string; quantity: number; product?: Product } => {
+        const product = resolveProduct(line.id);
+        return product && product.source === "channel3"
+          ? { id: line.id, quantity: line.quantity, product }
+          : { id: line.id, quantity: line.quantity };
+      },
+    );
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartToStore));
+    const compareToStore: StoredCompare = {
+      ids: snapshot.compare,
+      products: snapshot.compare
+        .map(resolveProduct)
+        .filter((product): product is Product =>
+          Boolean(product && product.source === "channel3"),
+        ),
+    };
     window.localStorage.setItem(
       COMPARE_STORAGE_KEY,
-      JSON.stringify(snapshot.compare),
+      JSON.stringify(compareToStore),
     );
   } catch {
     // Storage can be full or blocked; the UI keeps working in memory.
@@ -137,7 +239,7 @@ function createShopStore() {
       }
     },
     addToCart(productId: string): void {
-      if (!DEMO_PRODUCT_MAP.has(productId)) return;
+      if (!resolveProduct(productId)) return;
       commit((previous) => {
         const existing = previous.cart.find((line) => line.id === productId);
         const cart = existing
@@ -185,7 +287,7 @@ function createShopStore() {
       commit((previous) => ({ ...previous, cart: [] }));
     },
     toggleCompare(productId: string): void {
-      if (!DEMO_PRODUCT_MAP.has(productId)) return;
+      if (!resolveProduct(productId)) return;
       commit((previous) => {
         if (previous.compare.includes(productId)) {
           return {
@@ -207,10 +309,12 @@ const shopStore = createShopStore();
 
 interface ShopContextValue {
   cartLines: CartLine[];
-  /** Cart lines resolved to demo products (order preserved). */
+  /** Cart lines resolved to product records (order preserved). */
   cartItems: CartItem[];
   cartCount: number;
   cartSubtotal: number;
+  /** True when any live (non-demo) product sits in the cart. */
+  hasLiveItems: boolean;
   addToCart: (productId: string) => void;
   removeFromCart: (productId: string) => void;
   setQuantity: (productId: string, quantity: number) => void;
@@ -244,18 +348,20 @@ export function ShopProvider({ children }: { children: ReactNode }) {
 
     const cartItems: CartItem[] = snapshot.cart
       .map((line) => {
-        const product = DEMO_PRODUCT_MAP.get(line.id);
+        const product = resolveProduct(line.id);
         return product ? { product, quantity: line.quantity } : null;
       })
       .filter((item): item is CartItem => item !== null);
 
     const compareProducts: Product[] = snapshot.compare
-      .map((id) => DEMO_PRODUCT_MAP.get(id))
+      .map(resolveProduct)
       .filter((product): product is Product => product !== undefined);
 
     return {
       cartLines: snapshot.cart,
       cartItems,
+      /** True when any live (non-demo) record sits in the cart. */
+      hasLiveItems: cartItems.some((item) => item.product.source === "channel3"),
       cartCount: cartItems.reduce((sum, item) => sum + item.quantity, 0),
       cartSubtotal: cartItems.reduce(
         (sum, item) => sum + item.product.price * item.quantity,

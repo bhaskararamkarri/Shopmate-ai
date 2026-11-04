@@ -307,6 +307,7 @@ export const DEMO_PRODUCTS: Product[] = seeds.map((seed) => ({
   brand: seed.brand,
   specs: seed.specs,
   sku: seed.id,
+  source: "demo" as const,
   demo: true,
   visual: { glyph: seed.glyph, tint: seed.tint },
   attributes: seed.attributes,

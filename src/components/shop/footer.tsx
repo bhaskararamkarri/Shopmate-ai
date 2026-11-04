@@ -32,9 +32,9 @@ export function Footer() {
               you actually want.
             </p>
             <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-              Frontend preview. Every product, reply and total on this site is
-              mock demo data; the live catalog, chat model and PayPal checkout
-              arrive in later phases.
+              Product search runs on the live Channel3 catalog, with demo data
+              clearly labeled wherever it is used. The AI chat model and PayPal
+              checkout arrive in later phases.
             </p>
           </div>
 
@@ -66,7 +66,7 @@ export function Footer() {
         </div>
 
         <div className="mt-10 flex flex-col gap-2 text-[13px] text-muted-foreground sm:flex-row sm:items-start sm:justify-between">
-          <p>© {COPYRIGHT_YEAR} ShopMate AI. Demo preview build.</p>
+          <p>© {COPYRIGHT_YEAR} ShopMate AI. Catalog by Channel3 · demo picks labeled.</p>
           <p>Cart totals shown here are estimates; payment totals are validated server-side.</p>
         </div>
       </div>

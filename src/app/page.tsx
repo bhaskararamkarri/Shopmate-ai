@@ -32,7 +32,7 @@ import {
 
 export const metadata: Metadata = {
   description:
-    "The ShopMate AI homepage: describe what you need in plain language, browse four demo categories, and meet the assistant ranked on honest trade-offs.",
+    "The ShopMate AI homepage: describe what you need in plain language, browse starter categories, and let the assistant search the live Channel3 catalog with honest trade-offs.",
 };
 
 const TINT_BG: Record<ProductTint, string> = {
@@ -71,7 +71,7 @@ const HOW_IT_WORKS: Array<{ title: string; body: string }> = [
   },
   {
     title: "See the trade-offs",
-    body: "Next, every reply lines up comparable demo products and states what each one gives up before you commit to anything.",
+    body: "Next, every reply lines up comparable products and states what each one gives up before you commit to anything.",
   },
   {
     title: "Compare, then check out",
@@ -87,7 +87,7 @@ const BENEFITS: Array<{
 }> = [
   {
     title: "One question instead of twelve tabs",
-    body: "The agent answers a single natural-language prompt across the whole demo catalog, then shows why its picks ordered that way.",
+    body: "The agent answers a single natural-language prompt against the live Channel3 catalog, then shows why its picks ordered that way.",
     Icon: Compass,
     tint: "blue",
   },
@@ -105,7 +105,7 @@ const BENEFITS: Array<{
   },
   {
     title: "Honest demo rails",
-    body: "This preview is clearly labeled mock data. The live catalog and chat model swap in later without changing the interface you learn now.",
+    body: "The chat searches live Channel3 listings; this homepage rail stays mock and clearly labeled until it is wired to a curated live feed. Checkout lands in a later phase.",
     Icon: ShieldCheck,
     tint: "red",
   },
@@ -146,8 +146,8 @@ export default function HomePage() {
           </p>
           <HeroSearch className="mx-auto mt-9 max-w-2xl" />
           <p className="mt-5 text-[14px] text-muted-foreground">
-            Frontend preview · demo catalog and mock responses · live product
-            feed and checkout arrive in later phases
+            Live product search via the Channel3 catalog · demo picks stay
+            labeled · checkout arrives in a later phase
           </p>
         </div>
       </section>
@@ -237,7 +237,7 @@ export default function HomePage() {
               />
               <Button asChild variant="ghost" size="sm" className="gap-1">
                 <Link href="/chat">
-                  Open the chat
+                  Search the live catalog
                   <ArrowUpRight aria-hidden="true" />
                 </Link>
               </Button>
@@ -247,8 +247,9 @@ export default function HomePage() {
             <ProductGrid products={featured} columns={4} className="mt-9" />
           </Reveal>
           <p className="mt-5 text-[14px] text-muted-foreground">
-            Demo products — mock listings created for development. Nothing here
-            is real inventory, a real price, or a live retailer feed.
+            Demo products — mock listings created for development, sitting
+            alongside real catalog results elsewhere in the app. The featured
+            rail itself is not a live retailer feed.
           </p>
         </div>
       </section>
@@ -332,7 +333,7 @@ export default function HomePage() {
                       ShopMate
                     </p>
                     <p className="text-[13px] text-muted-foreground">
-                      Demo assistant · mock catalog
+                      Demo assistant · live catalog feed
                     </p>
                   </div>
                 </div>
@@ -342,8 +343,9 @@ export default function HomePage() {
                   </div>
                   <div className="max-w-[95%] space-y-2.5 rounded-xl bg-card px-3.5 py-3">
                     <p className="text-[14px] leading-relaxed text-foreground">
-                      Ranked for quiet, battery and value — three closest picks
-                      from the demo catalog:
+                      Ranked for quiet, battery and value — closest demo picks
+                      shown illustratively here; the chat searches the live
+                      catalog:
                     </p>
                     <ul className="space-y-2">
                       {PANEL_SIDEBAR_PRODUCTS.map((productId) => {
@@ -405,8 +407,8 @@ export default function HomePage() {
                 <Link href="/chat">Start a chat</Link>
               </Button>
               <p className="mt-4 text-[14px] text-white/70">
-                Demo data only — no live AI, inventory or payments in this
-                preview.
+                Live catalog via Channel3 · demo picks labeled · payments arrive
+                in a later phase.
               </p>
             </div>
           </Reveal>

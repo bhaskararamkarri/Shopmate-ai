@@ -1,5 +1,6 @@
-import Image from "next/image";
-import {
+"use client";
+
+import { useState } from "react";import {
   Camera,
   Ear,
   Headphones,
@@ -16,10 +17,14 @@ import { cn } from "cn";
 import type { Product, ProductGlyph, ProductTint } from "@/types";
 
 /**
- * Drawn product tile for demo records: a wash pastel surface with a line-art
- * glyph of the product type. When a real record carries `images`, the first
- * image renders instead — the drawn tile exists so the demo needs no
- * placeholder photography.
+ * Product tile imagery.
+ *
+ * - Live (channel3) records render their real merchant/CDN image through a
+ *   plain <img>: image hosts are arbitrary third parties, so they are NOT
+ *   proxied through the Next.js image optimizer (no server-side fetch of
+ *   untrusted URLs). A failed load falls back to the drawn tile.
+ * - Demo records keep the code-drawn pastel glyph tile — no stock photography
+ *   is invented anywhere.
  */
 const GLYPH_ICONS: Record<ProductGlyph, LucideIcon> = {
   headphones: Headphones,
@@ -49,6 +54,40 @@ const PRESETS: Record<TileVariant, { container: string; icon: string }> = {
   mini: { container: "size-14 rounded-lg", icon: "size-6" },
 };
 
+function DrawnTile({
+  glyph,
+  tint,
+  variant,
+  className,
+  imageClassName,
+  product,
+}: {
+  glyph: ProductGlyph;
+  tint: ProductTint;
+  variant: TileVariant;
+  className?: string;
+  imageClassName?: string;
+  product?: Product;
+}) {
+  const preset = PRESETS[variant];
+  const tintClasses = TINT_CLASSES[tint];
+  const Icon = GLYPH_ICONS[glyph];
+
+  return (
+    <span
+      aria-hidden={product ? undefined : true}
+      className={cn(
+        "flex items-center justify-center rounded-xl ring-1 ring-inset ring-navy/5",
+        preset.container,
+        tintClasses,
+        className,
+      )}
+    >
+      <Icon className={cn("translate-y-0 shrink-0", preset.icon, imageClassName)} />
+    </span>
+  );
+}
+
 export function ProductImage({
   product,
   variant = "mini",
@@ -61,11 +100,17 @@ export function ProductImage({
   imageClassName?: string;
 }) {
   const preset = PRESETS[variant];
-  const tint = TINT_CLASSES[product.visual?.tint ?? "blue"];
-  const Icon = GLYPH_ICONS[product.visual?.glyph ?? "headphones"];
-  const image = product.images.find((src) => Boolean(src));
+  const image = product.images.find((src) => Boolean(src)) ?? "";
+  const [failedImage, setFailedImage] = useState<string | null>(null);
 
-  if (image) {
+  // Reset the error fallback when a different image arrives. Done at render
+  // time (the documented alternative to a setState-in-effect reset).
+  if (failedImage !== null && failedImage !== image) {
+    setFailedImage(null);
+  }
+  const failed = image !== "" && failedImage === image;
+
+  if (image && !failed) {
     return (
       <span
         className={cn(
@@ -74,28 +119,29 @@ export function ProductImage({
           className,
         )}
       >
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element -- Live product
+            images sit on arbitrary merchant hosts; rendering them client-side
+            avoids proxying untrusted URLs through the image optimizer. */}
+        <img
           src={image}
           alt={product.name}
-          fill
-          sizes={variant === "banner" ? "(min-width: 1024px) 260px, 50vw" : "96px"}
-          className={cn("object-cover", imageClassName)}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedImage(image)}
+          className={cn("object-cover", preset.container, imageClassName)}
         />
       </span>
     );
   }
 
   return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "flex items-center justify-center rounded-xl ring-1 ring-inset ring-navy/5",
-        preset.container,
-        tint,
-        className,
-      )}
-    >
-      <Icon className={cn("translate-y-0 shrink-0", preset.icon, imageClassName)} />
-    </span>
+    <DrawnTile
+      product={product}
+      glyph={product.visual?.glyph ?? "headphones"}
+      tint={product.visual?.tint ?? "blue"}
+      variant={variant}
+      className={className}
+      imageClassName={imageClassName}
+    />
   );
 }

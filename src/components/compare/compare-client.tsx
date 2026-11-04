@@ -53,7 +53,9 @@ export function CompareClient() {
               Advantages and trade-offs
             </h2>
             <p className="mt-1 text-[15px] text-muted-foreground">
-              Derived only from the mock attributes attached to each product.
+              Derived from each product record&apos;s own attributes — demo
+              records ship mock attributes, live records carry real merchant
+              specs.
             </p>
             <div className="mt-5">
               <ComparisonNotes products={compareProducts} />

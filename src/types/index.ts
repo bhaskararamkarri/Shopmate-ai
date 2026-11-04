@@ -5,6 +5,9 @@
  * For Phase 1 they exist to define the contracts between modules.
  */
 
+/** Explicit product source identifier: live Channel3 feed vs local demo catalog. */
+export type ProductSource = 'channel3' | 'demo';
+
 /** A verified product record from the catalog (never fabricated). */
 export interface Product {
   /** Unique product identifier from the catalog source. */
@@ -14,7 +17,8 @@ export interface Product {
   /** Price in minor... in decimal currency units (e.g., 249.99 USD). */
   price: number;
   currency: string;
-  availability: 'in_stock' | 'out_of_stock' | 'limited';
+  /** 'unknown' when the source publishes no stock data — never guessed. */
+  availability: 'in_stock' | 'out_of_stock' | 'limited' | 'unknown';
   images: string[];
   ratings: number;
   reviews: number;
@@ -22,7 +26,15 @@ export interface Product {
   brand: string;
   specs: Record<string, string>;
   sku?: string;
-  /** True when this record comes from the local demo catalog, not the live API. */
+  /** Explicit catalog source: 'channel3' = live feed, 'demo' = local mock. */
+  source: ProductSource;
+  /** Live merchant domain (e.g. "nike.com") for channel3 records. */
+  merchant?: string;
+  /** Fresh offer/buy URL from the live feed; short-lived by Channel3 design. */
+  buyUrl?: string;
+  /** Original price before a discount, when the live offer is on sale. */
+  compareAtPrice?: number;
+  /** True when this record comes from the local demo catalog. Kept in sync with `source`. */
   demo?: boolean;
   /** Drawn iconography for demo records; real records rely on `images`. */
   visual?: ProductVisual;
@@ -85,4 +97,6 @@ export interface ChatMessage {
   createdAt: string;
   /** Products referenced by the assistant (must come from verified catalog). */
   productRefs?: string[];
+  /** Resolved product records attached to the reply (live or demo). */
+  products?: Product[];
 }

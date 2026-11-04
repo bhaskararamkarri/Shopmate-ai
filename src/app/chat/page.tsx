@@ -7,7 +7,7 @@ import { ChatClient } from "@/components/chat/chat-client";
 export const metadata: Metadata = {
   title: "AI Shopping Assistant",
   description:
-    "Chat with the ShopMate AI shopping agent: describe what you need and get ranked demo picks with honest trade-offs.",
+    "Chat with the ShopMate AI shopping agent: describe what you need and get ranked picks from the live Channel3 catalog with honest trade-offs.",
 };
 
 /**

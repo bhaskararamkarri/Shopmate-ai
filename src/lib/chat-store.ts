@@ -1,21 +1,26 @@
 "use client";
 
 /**
- * Chat conversation store (frontend-only mock layer).
+ * Chat conversation store.
  *
  * An external store read through `useSyncExternalStore`; the snapshot starts
  * empty on both the server and the first client render and is hydrated from
  * sessionStorage after mount, so the prerendered shell stays stable.
  *
- * No AI model is involved — replies come from the deterministic mock
- * responder in `mock-assistant.ts` and draw only from the demo catalog.
+ * Assistant messages carry resolved `Product` records (live Channel3 records
+ * or labeled demo records) that came from the catalog API; they persist with
+ * the message so a reload keeps the reply renderable.
  */
 import type { ChatMessage } from "@/types";
 
 /** Chat Message extending the shared contract with local UI state. */
 export interface UiMessage extends ChatMessage {
-  /** True while the mock reply is still pending (never persisted). */
+  /** True while the assistant reply is still pending (never persisted). */
   pending?: boolean;
+  /** Set when the reply failed; the row shows a retry affordance. */
+  error?: "request_failed";
+  /** Query to re-run when the user hits retry on a failed row. */
+  retryQuery?: string;
 }
 
 const STORAGE_KEY = "shopmate.chat.v2";
