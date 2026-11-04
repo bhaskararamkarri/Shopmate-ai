@@ -89,6 +89,18 @@ export interface Order {
   createdAt: string;
 }
 
+/** How an assistant reply was produced, for transparent provenance in the UI. */
+export interface AgentMeta {
+  /** 'ai' = model-driven turn; 'keyword_fallback' = deterministic no-AI path. */
+  mode: 'ai' | 'keyword_fallback';
+  /** Model id when mode is 'ai' (e.g. "gemini-3.8-flash"). */
+  model?: string;
+  /** Agent tools that ran during the turn, in call order. */
+  toolsUsed: string[];
+  /** Where the product data came from — demo degradation is always visible. */
+  catalog: { source: 'channel3' | 'demo'; fallback?: string };
+}
+
 /** A single message in the AI shopping conversation. */
 export interface ChatMessage {
   id: string;
@@ -99,4 +111,22 @@ export interface ChatMessage {
   productRefs?: string[];
   /** Resolved product records attached to the reply (live or demo). */
   products?: Product[];
+  /** Structured shopping intent after this turn (assistant messages). */
+  intent?: ShoppingIntentSummary;
+  /** Provenance metadata for assistant replies produced by the agent. */
+  agentMeta?: AgentMeta;
+}
+
+/**
+ * Intent summary persisted with a message. Structural subset of the agent's
+ * ShoppingIntent (kept loose here so the UI never imports agent internals).
+ */
+export interface ShoppingIntentSummary {
+  category?: string;
+  query?: string;
+  budget?: { amount: number; currency: string } | null;
+  brands: string[];
+  requiredSpecs: Record<string, string>;
+  priorities: string[];
+  clarifications: string[];
 }

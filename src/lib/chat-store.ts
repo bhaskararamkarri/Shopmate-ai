@@ -24,8 +24,37 @@ export interface UiMessage extends ChatMessage {
 }
 
 const STORAGE_KEY = "shopmate.chat.v2";
+const CONVERSATION_KEY = "shopmate.chat.conversation.v1";
 
 const EMPTY_MESSAGES: UiMessage[] = [];
+
+/**
+ * Stable per-session conversation id, sent with every /api/chat request so
+ * the server can attribute Channel3 searches and the client can correlate
+ * turns. Regenerated only when the conversation is cleared.
+ */
+export function getConversationId(): string {
+  try {
+    let id = window.sessionStorage.getItem(CONVERSATION_KEY);
+    if (!id) {
+      id = `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      window.sessionStorage.setItem(CONVERSATION_KEY, id);
+    }
+    return id;
+  } catch {
+    // Storage unavailable: an ephemeral id still keeps requests well-formed.
+    return `c-ephemeral-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+/** Drops the conversation id — called when the conversation is cleared. */
+export function resetConversationId(): void {
+  try {
+    window.sessionStorage.removeItem(CONVERSATION_KEY);
+  } catch {
+    // Nothing to reset if storage is unavailable.
+  }
+}
 
 function loadStoredMessages(): UiMessage[] {
   try {

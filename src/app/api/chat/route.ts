@@ -17,7 +17,6 @@ import { ChatRequestSchema, type ChatApiFailure } from "@/lib/agent/chat-contrac
 import { AgentTurnError, runAgentTurn } from "@/lib/agent/agent";
 import { checkRateLimit } from "@/lib/agent/rate-limit";
 
-export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /** Per-IP chat turns per minute. Conservative: each turn can spend credits. */

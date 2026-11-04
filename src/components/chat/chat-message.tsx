@@ -87,6 +87,24 @@ export function ChatMessageItem({
           </div>
         )}
 
+        {message.intent && message.intent.clarifications.length > 0 ? (
+          <div className="rounded-lg bg-primary/5 px-3 py-2.5">
+            <p className="text-[13px] font-medium text-foreground">
+              To narrow this down:
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {message.intent.clarifications.map((question) => (
+                <li
+                  key={question}
+                  className="text-[13px] leading-relaxed text-muted-foreground"
+                >
+                  {question}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {failed && onRetry && message.retryQuery ? (
           <div className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive/5 px-3 py-2.5">
             <TriangleAlert className="size-4 shrink-0 text-destructive" aria-hidden="true" />
@@ -118,6 +136,24 @@ export function ChatMessageItem({
           <p className="border-t border-border pt-3 text-[13px] leading-relaxed text-muted-foreground">
             Pin a few of these with the compare control, then open the
             comparison table to see every spec side by side.
+          </p>
+        ) : null}
+
+        {message.agentMeta ? (
+          <p className="border-t border-border pt-3 text-[12px] leading-relaxed text-muted-foreground">
+            {message.agentMeta.mode === "keyword_fallback"
+              ? "Keyword fallback (AI not configured)"
+              : `AI agent${message.agentMeta.model ? ` · ${message.agentMeta.model}` : ""}`}
+            {" · Catalog: "}
+            {message.agentMeta.catalog.source === "channel3"
+              ? "live Channel3"
+              : "demo fallback"}
+            {message.agentMeta.catalog.fallback
+              ? ` (${message.agentMeta.catalog.fallback})`
+              : ""}
+            {message.agentMeta.toolsUsed.length > 0
+              ? ` · Tools: ${message.agentMeta.toolsUsed.join(", ")}`
+              : ""}
           </p>
         ) : null}
       </div>

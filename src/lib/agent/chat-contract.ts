@@ -71,6 +71,8 @@ export interface ChatApiSuccess {
   catalog: ChatCatalogMeta;
   /** Which agent tools ran this turn. */
   toolsUsed: string[];
+  /** Model id when mode is 'ai' (e.g. "gemini-3.8-flash"). */
+  model?: string;
   /** How this turn was produced. */
   mode: "ai" | "keyword_fallback";
 }

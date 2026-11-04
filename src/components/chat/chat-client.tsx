@@ -7,58 +7,56 @@ import { LoadingState } from "@/components/shop/loading-state";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessageItem } from "@/components/chat/chat-message";
 import { DEMO_PROMPTS } from "@/lib/demo-catalog";
-import { chatStore, newMessageId, type UiMessage } from "@/lib/chat-store";
-import { registerProducts } from "@/lib/store";
 import {
-  searchProducts,
-  type ProductSearchResponse,
-} from "@/lib/catalog-api";
-import type { Product } from "@/types";
+  chatStore,
+  getConversationId,
+  newMessageId,
+  resetConversationId,
+  type UiMessage,
+} from "@/lib/chat-store";
+import { registerProducts } from "@/lib/store";
+import { sendChatMessage } from "@/lib/chat-api";
+import type { ShoppingIntentSummary } from "@/types";
+import type { ChatApiFailure, ChatApiSuccess } from "@/lib/agent/chat-contract";
 
-/** Results shown per assistant reply in the chat thread. */
-const SEARCH_RESULT_LIMIT = 6;
+/** History window sent with each turn — matches the server's validation bound. */
+const MAX_HISTORY = 16;
+const MAX_HISTORY_ITEM_LENGTH = 2000;
 
-/**
- * Composes the assistant's reply text from the API outcome. The wording is
- * derived from the response's own `source`/`fallback` metadata, so demo data
- * can never read as a live listing and a live failure never reads as success.
- */
-function composeAssistantReply(
-  query: string,
-  response: Extract<ProductSearchResponse, { success: true }>,
-): { content: string; products: Product[] } {
-  const products = response.products ?? [];
+function buildHistory(messages: UiMessage[]) {
+  return messages
+    .filter((message) => !message.pending && !message.error)
+    .slice(-MAX_HISTORY)
+    .map((message) => ({
+      role: message.role === "user" ? ("user" as const) : ("assistant" as const),
+      content: message.content.slice(0, MAX_HISTORY_ITEM_LENGTH),
+    }))
+    .filter((entry) => entry.content.length > 0);
+}
 
-  if (response.source === "channel3") {
-    if (products.length === 0) {
-      return {
-        content: `The live Channel3 catalog has no confident match for “${query}”. Try fewer words, a brand name, or a different product — e.g. “wireless headphones”.`,
-        products: [],
-      };
-    }
-    const count =
-      products.length === 1 ? "one match" : `${products.length} matches`;
+/** Maps a typed API failure to an honest assistant row, with retry where useful. */
+function failureReply(failure: ChatApiFailure, query: string) {
+  if (failure.error === "rate_limited") {
+    const wait = failure.retryAfterSec ?? 60;
     return {
-      content: `Ranked picks for “${query}” — live results from the Channel3 catalog (${count}). Prices and stock come from the merchants behind each offer:`,
-      products,
+      content: `You're sending messages faster than the chat allows — give it about ${wait}s and try again. Nothing was searched in the meantime.`,
+      error: "request_failed" as const,
+      retryQuery: query,
     };
   }
-
-  const reason = response.fallback?.reason ?? "not_configured";
-  const prefix =
-    reason === "not_configured"
-      ? "No live catalog key is configured, so this reply comes from the clearly labeled demo catalog."
-      : "The live catalog is unavailable right now, so this reply falls back to the clearly labeled demo catalog instead.";
-
-  if (products.length === 0) {
+  if (failure.error === "ai_unavailable") {
     return {
-      content: `${prefix}\n\nNothing in the demo catalog matches “${query}” either — try one of the suggestion prompts below.`,
-      products: [],
+      content:
+        failure.message ??
+        "The AI service couldn't complete that turn. Nothing was fabricated to fill the gap — try again shortly.",
+      error: "request_failed" as const,
+      retryQuery: query,
     };
   }
   return {
-    content: `${prefix}\n\nClosest demo picks for “${query}” — DEMO DATA, not live listings:`,
-    products,
+    content:
+      failure.message ??
+      "That request was rejected as invalid. Try a short, plain product description.",
   };
 }
 
@@ -69,9 +67,10 @@ function scrollToBottom(node: HTMLElement | null) {
 }
 
 /**
- * Chat experience backed by the live product catalog API. Every reply carries
- * real product records (or visibly labeled demo records on fallback); failed
- * requests surface a retry instead of a fabricated answer.
+ * Chat experience backed by the AI shopping agent (POST /api/chat). Replies
+ * carry grounded product records ranked by the deterministic engine; the
+ * agent's provenance (mode, model, catalog source) travels with every reply
+ * and failed requests surface a retry instead of a fabricated answer.
  */
 export function ChatClient({ initialQuery }: { initialQuery?: string }) {
   const messages = useSyncExternalStore(
@@ -84,6 +83,7 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
   const abortRef = useRef<AbortController | null>(null);
   const autoSentRef = useRef(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const intentRef = useRef<ShoppingIntentSummary | null>(null);
 
   const send = useCallback(async (text: string) => {
     const query = text.trim();
@@ -105,11 +105,13 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     });
     setPending(true);
 
-    let response: ProductSearchResponse;
+    let result: ChatApiSuccess | ChatApiFailure;
     try {
-      response = await searchProducts({
-        query,
-        limit: SEARCH_RESULT_LIMIT,
+      result = await sendChatMessage({
+        conversationId: getConversationId(),
+        history: buildHistory(chatStore.getSnapshot()),
+        message: query,
+        intent: intentRef.current ?? undefined,
         signal: controller.signal,
       });
     } catch {
@@ -119,7 +121,7 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
         id: newMessageId(),
         role: "assistant",
         content:
-          "Something went wrong reaching the product catalog, so there is nothing to show for that. No demo results were substituted — try again in a moment.",
+          "Something went wrong reaching the shopping agent, so there is nothing to show for that. No results were substituted — try again in a moment.",
         createdAt: new Date().toISOString(),
         error: "request_failed",
         retryQuery: query,
@@ -130,28 +132,39 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     if (sendSeqRef.current !== sendId) return;
     setPending(false);
 
-    if (!response.success) {
+    if (!result.success) {
+      const reply = failureReply(result, query);
       chatStore.append({
         id: newMessageId(),
         role: "assistant",
-        content:
-          response.message ??
-          "That search was rejected as invalid. Try a short, plain product description.",
+        content: reply.content,
         createdAt: new Date().toISOString(),
+        ...(reply.error ? { error: reply.error, retryQuery: reply.retryQuery } : {}),
       });
       return;
     }
 
-    // Live search results must be resolvable for cart/compare actions.
-    registerProducts(response.products);
+    // Only tool-verified products reach the UI; register them so cart and
+    // compare actions can resolve the ids.
+    registerProducts(result.products);
 
-    const reply = composeAssistantReply(query, response);
+    // Keep the accumulated intent for the next turn's context.
+    intentRef.current = result.intent;
+
     chatStore.append({
       id: newMessageId(),
       role: "assistant",
-      content: reply.content,
+      content: result.content,
       createdAt: new Date().toISOString(),
-      products: reply.products,
+      products: result.products,
+      productRefs: result.productIds,
+      intent: result.intent,
+      agentMeta: {
+        mode: result.mode,
+        model: result.model,
+        toolsUsed: result.toolsUsed,
+        catalog: result.catalog,
+      },
     });
   }, []);
 
@@ -159,6 +172,8 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     sendSeqRef.current += 1; // invalidate in-flight continuations
     abortRef.current?.abort();
     setPending(false);
+    intentRef.current = null;
+    resetConversationId();
     chatStore.replaceAll([]);
   }, []);
 
@@ -203,7 +218,7 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
               AI Shopping Assistant
             </h1>
             <p className="text-[13px] text-muted-foreground">
-              Live catalog via Channel3 · labeled demo fallback · no live AI yet
+              Grounded in the live Channel3 catalog · demo fallback always labeled
             </p>
           </div>
           <Button
@@ -232,8 +247,9 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
               What are you shopping for?
             </h2>
             <p className="mt-2 max-w-md text-[15px] leading-relaxed text-muted-foreground">
-              Describe the thing you need in plain language. Replies search the
-              live Channel3 catalog and rank real merchant offers.
+              Describe the thing you need in plain language. The agent searches
+              the live Channel3 catalog, filters fuzzy matches, and ranks real
+              merchant offers.
             </p>
             <ul className="mt-7 grid w-full gap-2 sm:grid-cols-2">
               {DEMO_PROMPTS.map((prompt) => (
@@ -249,7 +265,8 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
               ))}
             </ul>
             <p className="mt-7 text-[13px] text-muted-foreground">
-              Live listings without a Channel3 key fall back to results clearly
+              Without an AI key the agent still searches the catalog with
+              keyword matching; without a Channel3 key results are clearly
               labeled as demo data.
             </p>
           </div>
@@ -276,8 +293,8 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
         <div className="mx-auto w-full max-w-3xl px-4 py-3 md:px-6">
           <ChatInput pending={pending} onSubmit={(value) => void send(value)} />
           <p className="mt-2 text-center text-[13px] text-muted-foreground">
-            Catalog: live via Channel3, with a labeled demo fallback · AI agent
-            orchestration arrives in the next phase.
+            AI answers are grounded in live catalog data — product facts come
+            only from real records, never from the model.
           </p>
         </div>
       </footer>

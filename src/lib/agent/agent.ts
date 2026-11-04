@@ -25,7 +25,7 @@ import {
   type AgentToolContext,
 } from "./tools";
 import { buildInstructions } from "./instructions";
-import { getProviderName, isAIConfigured, resolveChatModel } from "./provider";
+import { getProviderName, isAIConfigured, resolveChatModel, resolveModelId } from "./provider";
 import { getCatalogProduct, searchCatalog } from "@/lib/catalog/provider";
 import type { ChatApiSuccess, ChatComparison } from "./chat-contract";
 
@@ -77,6 +77,7 @@ export function assembleTurn(input: {
   toolsUsed: string[];
   query: string;
   mode: "ai" | "keyword_fallback";
+  model?: string;
 }): ChatApiSuccess {
   const { intent, catalogLog } = input;
 
@@ -118,6 +119,7 @@ export function assembleTurn(input: {
     productIds,
     catalog: input.catalogMeta ?? { source: "demo" },
     toolsUsed: input.toolsUsed,
+    model: input.model,
     mode: input.mode,
   };
 }
@@ -239,6 +241,7 @@ export async function runAgentTurn(
       toolsUsed: ctx.toolsUsedRef.current,
       query: input.message,
       mode: "ai",
+      model: resolveModelId(),
     });
   } catch (error) {
     if (error instanceof AgentTurnError) throw error;
