@@ -61,6 +61,9 @@ function makeCtx(overrides?: {
     intentRef: { current: overrides?.intent ?? emptyIntent() },
     catalogLog: new Map<string, Product>(),
     recommendedIdsRef: { current: [] as string[] },
+    toolsUsedRef: { current: [] as string[] },
+    comparisonsRef: { current: [] as { productIds: string[]; missingIds: string[] }[] },
+    catalogMetaRef: { current: null },
     userId: undefined,
   };
 }

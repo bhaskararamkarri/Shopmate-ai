@@ -52,6 +52,16 @@ export interface AgentToolContext {
   catalogLog: Map<string, Product>;
   /** Recommended ids the model recorded, already validated against the log. */
   recommendedIdsRef: { current: string[] };
+  /** Tool names in call order — reported to the client for transparency. */
+  toolsUsedRef: { current: string[] };
+  /** Comparison groups performed this turn (ids only; resolved at assembly). */
+  comparisonsRef: {
+    current: { productIds: string[]; missingIds: string[] }[];
+  };
+  /** Provenance of the most recent search — demo degradation stays visible. */
+  catalogMetaRef: {
+    current: { source: "channel3" | "demo"; fallback?: string } | null;
+  };
   /** Pseudonymous user id forwarded to Channel3 for attribution. */
   userId?: string;
 }
@@ -134,6 +144,7 @@ export function createAgentTools(ctx: AgentToolContext) {
           .optional(),
       }),
       execute: async ({ query, limit, filters }) => {
+        ctx.toolsUsedRef.current.push("searchProducts");
         if (searchesUsed >= ctx.budgets.searches) return BUDGET_EXHAUSTED;
         searchesUsed += 1;
 
@@ -144,6 +155,10 @@ export function createAgentTools(ctx: AgentToolContext) {
           limit: limit ?? 6,
           userId: ctx.userId,
         });
+        ctx.catalogMetaRef.current = {
+          source: outcome.source,
+          fallback: "fallback" in outcome ? outcome.fallback?.reason : undefined,
+        };
 
         let candidates = outcome.products;
         if (filters?.maxPrice !== undefined) {
@@ -193,6 +208,7 @@ export function createAgentTools(ctx: AgentToolContext) {
         productId: z.string().min(1).max(120),
       }),
       execute: async ({ productId }) => {
+        ctx.toolsUsedRef.current.push("getProductDetails");
         if (detailsUsed >= ctx.budgets.details) return BUDGET_EXHAUSTED;
         detailsUsed += 1;
 
@@ -212,6 +228,7 @@ export function createAgentTools(ctx: AgentToolContext) {
         productIds: z.array(z.string().min(1).max(120)).min(2).max(4),
       }),
       execute: async ({ productIds }) => {
+        ctx.toolsUsedRef.current.push("compareProducts");
         if (comparesUsed >= ctx.budgets.compares) return BUDGET_EXHAUSTED;
         comparesUsed += 1;
 
@@ -226,6 +243,7 @@ export function createAgentTools(ctx: AgentToolContext) {
             missingIds.push(id);
           }
         }
+        ctx.comparisonsRef.current.push({ productIds, missingIds });
 
         return {
           data: catalogData({
@@ -245,6 +263,7 @@ export function createAgentTools(ctx: AgentToolContext) {
         missingRequirements: z.array(z.string().min(1).max(120)).max(6),
       }),
       execute: async ({ originalQuery, missingRequirements }) => {
+        ctx.toolsUsedRef.current.push("refineSearch");
         const parts = [normalizeQuery(originalQuery), ...missingRequirements.map((r) => r.trim().toLowerCase())];
         const refinedQuery = parts.filter(Boolean).join(" ").slice(0, MAX_QUERY_LENGTH);
         return { refinedQuery, note: "Run searchProducts with this query." };
@@ -260,6 +279,7 @@ export function createAgentTools(ctx: AgentToolContext) {
         recommendedProductIds: z.array(z.string().min(1).max(120)).max(10).default([]),
       }),
       execute: async ({ recommendedProductIds, ...intentInput }) => {
+        ctx.toolsUsedRef.current.push("recordIntent");
         const parsed = IntentSchema.parse(intentInput);
         ctx.intentRef.current = mergeIntent(ctx.intentRef.current, parsed);
 
