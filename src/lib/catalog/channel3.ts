@@ -27,7 +27,28 @@
 import { CatalogError } from "./types";
 import type { CatalogSearchOptions } from "./types";
 
-const CHANNEL3_BASE_URL = "https://api.trychannel3.com";
+const DEFAULT_BASE_URL = "https://api.trychannel3.com";
+
+/**
+ * Resolves the API base URL. `CHANNEL3_BASE_URL` may override the production
+ * host for local testing (e.g. a stub server that never responds, to exercise
+ * the timeout path). This is operator configuration on the server — never user
+ * input — so it does not create an SSRF surface; non-http(s) or unparseable
+ * values fall back to the production URL.
+ */
+function baseUrl(): string {
+  const raw = process.env.CHANNEL3_BASE_URL?.trim();
+  if (!raw) return DEFAULT_BASE_URL;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return DEFAULT_BASE_URL;
+    }
+    return raw.replace(/\/+$/, "");
+  } catch {
+    return DEFAULT_BASE_URL;
+  }
+}
 
 /** Outbound timeout: env-overridable, clamped to a safe range. */
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -64,6 +85,10 @@ function errorForStatus(status: number, detail: unknown): CatalogError {
     typeof detail === "string" && detail.length > 0 ? detail : undefined;
   switch (status) {
     case 401:
+    // The OpenAPI documents 401 for bad keys, but the live API answers
+    // 403 Forbidden ({"message":"Forbidden"}) for invalid keys. Both mean
+    // the credential was rejected.
+    case 403:
       return new CatalogError(
         "auth_failed",
         providerDetail ?? "Channel3 rejected the API key",
@@ -108,7 +133,7 @@ async function requestJson({
   init,
   allowNotFound = false,
 }: Channel3JsonArgs): Promise<unknown> {
-  const url = `${CHANNEL3_BASE_URL}${path}`;
+  const url = `${baseUrl()}${path}`;
   const headers: Record<string, string> = {
     "x-api-key": apiKey(),
     accept: "application/json",
@@ -146,8 +171,9 @@ async function requestJson({
       body !== undefined &&
       body !== null &&
       typeof body === "object" &&
-      "detail" in body
-        ? (body as { detail?: unknown }).detail
+      ("detail" in body || "message" in body)
+        ? (body as { detail?: unknown; message?: unknown }).detail ??
+          (body as { message?: unknown }).message
         : undefined;
     throw errorForStatus(response.status, detail);
   }
