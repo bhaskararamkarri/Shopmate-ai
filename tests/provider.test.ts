@@ -10,6 +10,7 @@ function setEnv(overrides: Record<string, string | undefined>) {
   const keys = [
     "GOOGLE_GENERATIVE_AI_API_KEY",
     "GEMINI_API_KEY",
+    "GROQ_API_KEY",
     "SHOPMATE_AI_PROVIDER",
     "SHOPMATE_AI_MODEL",
     "SHOPMATE_OLLAMA_URL",
@@ -103,5 +104,40 @@ describe("provider configuration", () => {
     const model = resolveChatModel();
     expect(model).not.toBeNull();
     expect((model as { provider?: string }).provider).toContain("ollama");
+  });
+
+  it("switches to groq when explicitly selected", () => {
+    setEnv({ SHOPMATE_AI_PROVIDER: "groq" });
+    expect(getProviderName()).toBe("groq");
+    // Groq needs its own key: selecting the provider alone is not enough.
+    expect(isAIConfigured()).toBe(false);
+    expect(resolveModelId()).toBe("openai/gpt-oss-120b");
+  });
+
+  it("does not accept a Google key when groq is selected", () => {
+    // The Gemini credential must not satisfy Groq: each provider requires
+    // its own key so a stale Google key can never mask a missing Groq one.
+    setEnv({
+      SHOPMATE_AI_PROVIDER: "groq",
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+      GEMINI_API_KEY: "test-key",
+    });
+    expect(isAIConfigured()).toBe(false);
+    expect(resolveChatModel()).toBeNull();
+  });
+
+  it("builds a groq model when configured with GROQ_API_KEY", () => {
+    setEnv({ SHOPMATE_AI_PROVIDER: "groq", GROQ_API_KEY: "test-key" });
+    expect(isAIConfigured()).toBe(true);
+    const model = resolveChatModel();
+    expect(model).not.toBeNull();
+    expect((model as { provider?: string }).provider).toContain("groq");
+    expect((model as { modelId?: string }).modelId).toBe("openai/gpt-oss-120b");
+  });
+
+  it("treats a whitespace-only Groq key as unconfigured", () => {
+    setEnv({ SHOPMATE_AI_PROVIDER: "groq", GROQ_API_KEY: "   " });
+    expect(isAIConfigured()).toBe(false);
+    expect(resolveChatModel()).toBeNull();
   });
 });

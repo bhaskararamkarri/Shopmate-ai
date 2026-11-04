@@ -273,9 +273,17 @@ export async function runAgentTurn(
     // Carry only sanitized fields: message and status. Never the request
     // body or headers — those can contain the API key.
     const status = (error as { statusCode?: unknown } | null)?.statusCode;
+    const name = error instanceof Error ? error.name : "";
+    // Timeouts surface as TimeoutError/AbortError without an HTTP status;
+    // give them a stable, actionable message instead of a raw stack name.
+    const timedOut = name === "TimeoutError" || name === "AbortError";
     throw new AgentTurnError(
       "ai_unavailable",
-      error instanceof Error ? error.message : "model request failed",
+      timedOut
+        ? "AI provider request timed out"
+        : error instanceof Error
+          ? error.message
+          : "model request failed",
       typeof status === "number" ? status : undefined,
     );
   }

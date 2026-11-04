@@ -16,6 +16,8 @@ vi.mock("@ai-sdk/google", async (importOriginal) => {
           if (Number.isFinite(status) && status > 0) {
             (failure as Error & { statusCode?: number }).statusCode = status;
           }
+          const failName = process.env.SHOPMATE_FAIL_NAME;
+          if (failName) failure.name = failName;
           throw failure;
         };
       }
@@ -74,6 +76,7 @@ function setEnv(overrides: Record<string, string | undefined>) {
     "SHOPMATE_AI_MODEL",
     "SHOPMATE_FAIL_MODEL",
     "SHOPMATE_FAIL_STATUS",
+    "SHOPMATE_FAIL_NAME",
   ]) {
     if (overrides[key] === undefined) delete process.env[key];
     else process.env[key] = overrides[key];
@@ -240,6 +243,7 @@ describe("runAgentTurn — error mapping", () => {
     setEnv({});
     delete process.env.SHOPMATE_FAIL_MODEL;
     delete process.env.SHOPMATE_FAIL_STATUS;
+    delete process.env.SHOPMATE_FAIL_NAME;
   });
 
   it("maps a model failure to ai_unavailable", async () => {
@@ -264,6 +268,31 @@ describe("runAgentTurn — error mapping", () => {
     await expect(
       runAgentTurn({ history: [], message: "hello" }, {}),
     ).rejects.toMatchObject({ code: "ai_unavailable", upstreamStatus: 401 });
+  });
+
+  it("carries a 429 rate-limit status through to the typed error", async () => {
+    setEnv({
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+      SHOPMATE_FAIL_MODEL: "1",
+      SHOPMATE_FAIL_STATUS: "429",
+    });
+    await expect(
+      runAgentTurn({ history: [], message: "hello" }, {}),
+    ).rejects.toMatchObject({ code: "ai_unavailable", upstreamStatus: 429 });
+  });
+
+  it("maps a provider timeout to a sanitized timeout message", async () => {
+    setEnv({
+      GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
+      SHOPMATE_FAIL_MODEL: "1",
+      SHOPMATE_FAIL_NAME: "TimeoutError",
+    });
+    await expect(
+      runAgentTurn({ history: [], message: "hello" }, {}),
+    ).rejects.toMatchObject({
+      code: "ai_unavailable",
+      message: "AI provider request timed out",
+    });
   });
 
   it("leaves upstreamStatus undefined when the failure has no status", async () => {
