@@ -50,16 +50,88 @@ function groqTimeoutMs(): number {
  * Fetch wrapper bounding every Groq request with a timeout. Combines the
  * SDK's own abort signal (when present) with the timeout so either can fire.
  */
-function groqFetch(
-  input: Parameters<typeof fetch>[0],
-  init?: Parameters<typeof fetch>[1],
-): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(groqTimeoutMs());
-  const upstream = init?.signal;
-  const signal = upstream
-    ? AbortSignal.any([upstream, timeoutSignal])
-    : timeoutSignal;
-  return fetch(input, { ...init, signal });
+/**
+ * Groq's OpenAI-compatible API rejects `reasoning_content` on incoming
+ * assistant messages ("messages.N: for role:assistant property
+ * 'reasoning_content' is unsupported", HTTP 400) while its reasoning models
+ * (e.g. openai/gpt-oss-120b) return reasoning that the AI SDK stores and
+ * re-sends on the next tool-loop step. Removes exactly that unsupported
+ * field from outgoing chat-completion request bodies; tool calls, tool
+ * results, ids and ordering are untouched. Non-JSON bodies and bodies
+ * without a messages array pass through unchanged.
+ */
+export function stripGroqUnsupportedRequestFields(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !Array.isArray((parsed as { messages?: unknown }).messages)
+  ) {
+    return body;
+  }
+  const messages = (parsed as { messages: Record<string, unknown>[] }).messages;
+  let changed = false;
+  for (const message of messages) {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      message.role === "assistant" &&
+      "reasoning_content" in message
+    ) {
+      delete message.reasoning_content;
+      changed = true;
+    }
+  }
+  return changed ? JSON.stringify(parsed) : body;
+}
+
+/**
+ * Builds the Groq transport: strips fields Groq rejects on incoming messages
+ * and bounds every request with a timeout. `underlying` is the fetch
+ * implementation to call through to (the global fetch in production; tests
+ * inject a capturing fetch here and still get the same transformations).
+ */
+function createGroqFetch(underlying: typeof fetch = fetch): typeof fetch {
+  return (input, init) => {
+    const timeoutSignal = AbortSignal.timeout(groqTimeoutMs());
+    const upstream = init?.signal;
+    const signal = upstream
+      ? AbortSignal.any([upstream, timeoutSignal])
+      : timeoutSignal;
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    let body = init?.body;
+    if (typeof body === "string" && url.includes("/chat/completions")) {
+      body = stripGroqUnsupportedRequestFields(body);
+    }
+    return underlying(input, { ...init, body, signal });
+  };
+}
+
+/**
+ * Builds the Groq chat model. Split out from `resolveChatModel` so tests can
+ * inject a capturing fetch and exercise the real provider serialization.
+ */
+export function createGroqModel(
+  apiKey: string,
+  options?: { modelId?: string; fetch?: typeof fetch },
+): LanguageModel {
+  const groq = createOpenAICompatible({
+    name: "groq",
+    baseURL: DEFAULT_GROQ_URL,
+    apiKey,
+    fetch: createGroqFetch(options?.fetch),
+  });
+  return groq(options?.modelId ?? resolveModelId());
 }
 
 function readEnv(name: string): string | undefined {
@@ -115,13 +187,7 @@ export function resolveChatModel(): LanguageModel | null {
   if (provider === "groq") {
     const apiKey = readEnv("GROQ_API_KEY");
     if (!apiKey) return null;
-    const groq = createOpenAICompatible({
-      name: "groq",
-      baseURL: DEFAULT_GROQ_URL,
-      apiKey,
-      fetch: groqFetch,
-    });
-    return groq(modelId);
+    return createGroqModel(apiKey, { modelId });
   }
 
   const apiKey = readEnv("GOOGLE_GENERATIVE_AI_API_KEY") ?? readEnv("GEMINI_API_KEY");
