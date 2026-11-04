@@ -23,6 +23,10 @@ import { z } from "zod";
 import { getCatalogProduct } from "@/lib/catalog/provider";
 import { CatalogError } from "@/lib/catalog/types";
 import { getPayPalAccessToken, getPayPalConfig, PayPalAuthError } from "./auth";
+import {
+  registerPendingPayPalOrder,
+  resetPayPalOrderRegistry,
+} from "./order-registry";
 
 // Hard guard: a client bundle that somehow imports this module fails loudly
 // at module evaluation instead of shipping the secret-reading code.
@@ -51,6 +55,13 @@ const PRODUCT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** Idempotency-Key: URL-safe, bounded, long enough to be meaningful. */
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{8,108}$/;
+
+/**
+ * PayPal order ids are opaque alphanumeric identifiers (the sandbox commonly
+ * returns 17 characters). The capture route validates this again before it
+ * ever looks up a pending order or calls PayPal.
+ */
+const PAYPAL_ORDER_ID_PATTERN = /^[A-Za-z0-9]{10,36}$/;
 
 const IDEMPOTENCY_TTL_MS = 10 * 60_000;
 const MAX_IDEMPOTENCY_ENTRIES = 500;
@@ -118,6 +129,12 @@ export interface PayPalOrderResult {
   status: string;
   amount: { currency: "USD"; value: string };
   referenceId: string;
+  /**
+   * Opaque, order-scoped capability proving this browser started this exact
+   * server-created order. Required by the capture endpoint; it is not a PayPal
+   * credential and carries no secret.
+   */
+  captureToken: string;
   /** Present only when PayPal returned a safe https approval link. */
   approveUrl?: string;
 }
@@ -138,11 +155,17 @@ const idempotencyCache = new Map<string, IdempotencyEntry>();
 /** Clears in-memory idempotency state — test isolation only. */
 export function resetPayPalOrderCaches(): void {
   idempotencyCache.clear();
+  resetPayPalOrderRegistry();
 }
 
 /** True when the header value is a usable Idempotency-Key. */
 export function isValidIdempotencyKey(value: string): boolean {
   return IDEMPOTENCY_KEY_PATTERN.test(value);
+}
+
+/** True when the value is a syntactically usable PayPal order id. */
+export function isValidPayPalOrderId(value: string): boolean {
+  return PAYPAL_ORDER_ID_PATTERN.test(value);
 }
 
 /** Merges duplicate product lines and enforces the per-product ceiling. */
@@ -310,6 +333,9 @@ async function requestPayPalOrder(params: {
   }
 
   const id = record.id.trim();
+  if (!isValidPayPalOrderId(id)) {
+    throw malformedResponse();
+  }
   const status =
     typeof record.status === "string" && record.status.trim().length > 0
       ? record.status.trim()
@@ -476,6 +502,7 @@ export async function createPayPalOrder(
 
   const amountValue = formatCents(totalCents);
   const referenceId = `shopmate-demo-${randomUUID()}`;
+  const captureToken = randomUUID();
 
   const order = await requestPayPalOrder({
     accessToken,
@@ -492,8 +519,20 @@ export async function createPayPalOrder(
     status: order.status,
     amount: { currency: "USD", value: amountValue },
     referenceId,
+    captureToken,
     ...(order.approveUrl ? { approveUrl: order.approveUrl } : {}),
   };
+
+  // The authoritative record capture will verify against. It is deliberately
+  // in-memory and demo-scoped; see order-registry.ts for the limitations.
+  registerPendingPayPalOrder({
+    orderId: order.id,
+    referenceId,
+    amountCents: totalCents,
+    amountValue,
+    currency: "USD",
+    captureToken,
+  });
 
   if (idempotencyKey) {
     if (idempotencyCache.size >= MAX_IDEMPOTENCY_ENTRIES) {

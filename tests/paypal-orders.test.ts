@@ -63,15 +63,16 @@ const TOKEN_RESPONSE = {
   expires_in: 32400,
 };
 
-const APPROVE_URL = "https://www.sandbox.paypal.com/checkoutnow?token=ORDER-123";
+const APPROVE_URL =
+  "https://www.sandbox.paypal.com/checkoutnow?token=5O190127TN364715T";
 
 const ORDER_RESPONSE = {
-  id: "ORDER-123",
+  id: "5O190127TN364715T",
   status: "CREATED",
   links: [
     { href: APPROVE_URL, rel: "approve", method: "GET" },
     {
-      href: "https://api-m.sandbox.paypal.com/v2/checkout/orders/ORDER-123",
+      href: "https://api-m.sandbox.paypal.com/v2/checkout/orders/5O190127TN364715T",
       rel: "self",
       method: "GET",
     },
@@ -170,11 +171,14 @@ describe("createPayPalOrder — valid order", () => {
       success: true,
       environment: "sandbox",
       demo: true,
-      orderId: "ORDER-123",
+      orderId: "5O190127TN364715T",
       status: "CREATED",
       amount: { currency: "USD", value: "412.48" },
       approveUrl: APPROVE_URL,
     });
+    // The browser receives an opaque capability for the server-side capture
+    // registry — never a PayPal credential.
+    expect(String(body.captureToken)).toMatch(/^[A-Za-z0-9-]{16,128}$/);
 
     const [order] = orderCalls(calls);
     expect(order).toBeDefined();
@@ -372,6 +376,20 @@ describe("createPayPalOrder — upstream failures", () => {
     expect(body).toMatchObject({ success: false, error: "paypal_malformed_response" });
   });
 
+  it("rejects a PayPal order id that cannot be captured safely", async () => {
+    installPayPalFetch({
+      order: () => jsonResponse({ id: "bad order id!", status: "CREATED" }, 201),
+    });
+    const { status, body } = await postRoute({
+      items: [{ productId: HEADPHONES.id, quantity: 1 }],
+    });
+    expect(status).toBe(502);
+    expect(body).toMatchObject({
+      success: false,
+      error: "paypal_malformed_response",
+    });
+  });
+
   it("maps catalog failures without substituting prices", async () => {
     installPayPalFetch();
     vi.mocked(getCatalogProduct).mockRejectedValue(
@@ -412,6 +430,7 @@ describe("createPayPalOrder — safe responses", () => {
         "amount",
         "approveUrl",
         "referenceId",
+        "captureToken",
       ].sort(),
     );
 

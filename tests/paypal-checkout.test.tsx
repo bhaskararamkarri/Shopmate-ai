@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 /**
- * PayPal Checkout component tests (Phase 5.3).
+ * PayPal Checkout component tests (Phase 5.3 + 5.4).
  *
  * The SDK and all HTTP calls are mocked. These tests pin the buyer-facing
  * behaviour: server-created orders from ids/quantities only, a visible demo
- * disclaimer, explicit pending-capture state after approval, cancel/error
- * handling, SDK failure recovery, and duplicate-submission protection.
+ * disclaimer, approval-to-capture flow, COMPLETED-only success, honest
+ * pending/denied/error states, cancel handling, SDK failure recovery, and
+ * duplicate submission/capture protection.
  */
 import { act } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -41,14 +42,31 @@ const CONFIG_RESPONSE = {
   currency: "USD",
 };
 
+const ORDER_ID = "5O190127TN364715T";
+const CAPTURE_ID = "3C679366HH908993F";
+const CAPTURE_TOKEN = "capture-token-1234567890";
+
 const ORDER_RESPONSE = {
   success: true,
   environment: "sandbox",
   demo: true,
-  orderId: "ORDER-123",
+  orderId: ORDER_ID,
   status: "CREATED",
   amount: { currency: "USD", value: "249.00" },
   referenceId: "shopmate-demo-test",
+  captureToken: CAPTURE_TOKEN,
+};
+
+const CAPTURE_RESPONSE = {
+  success: true,
+  environment: "sandbox",
+  demo: true,
+  orderId: ORDER_ID,
+  captureId: CAPTURE_ID,
+  status: "COMPLETED",
+  amount: { currency: "USD", value: "249.00" },
+  referenceId: "shopmate-demo-test",
+  alreadyCaptured: false,
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -64,8 +82,9 @@ interface FetchCall {
 }
 
 function installFetch(handlers?: {
-  config?: () => Response;
-  order?: () => Response;
+  config?: () => Response | Promise<Response>;
+  order?: () => Response | Promise<Response>;
+  capture?: () => Response | Promise<Response>;
 }): FetchCall[] {
   const calls: FetchCall[] = [];
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -84,10 +103,19 @@ function installFetch(handlers?: {
         ? handlers.order()
         : jsonResponse(ORDER_RESPONSE, 201);
     }
+    if (url.includes(`/api/paypal/orders/${ORDER_ID}/capture`)) {
+      return handlers?.capture
+        ? handlers.capture()
+        : jsonResponse(CAPTURE_RESPONSE);
+    }
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal("fetch", fn);
   return calls;
+}
+
+function captureCalls(calls: FetchCall[]): FetchCall[] {
+  return calls.filter((call) => call.url.includes("/capture"));
 }
 
 interface FakeSdk {
@@ -206,7 +234,7 @@ describe("PayPalCheckout — order creation", () => {
     await act(async () => {
       orderId = await fake.configs[0]!.createOrder();
     });
-    expect(orderId).toBe("ORDER-123");
+    expect(orderId).toBe(ORDER_ID);
 
     const orderCall = calls.find((call) =>
       call.url.endsWith("/api/paypal/orders"),
@@ -263,7 +291,7 @@ describe("PayPalCheckout — order creation", () => {
       const first = fake.configs[0]!.createOrder();
       const second = fake.configs[0]!.createOrder();
       await expect(second).rejects.toThrow(/already being created/i);
-      await expect(first).resolves.toBe("ORDER-123");
+      await expect(first).resolves.toBe(ORDER_ID);
     });
 
     expect(
@@ -272,8 +300,8 @@ describe("PayPalCheckout — order creation", () => {
   });
 });
 
-describe("PayPalCheckout — buyer approval and cancellation", () => {
-  it("shows pending capture after approval and never claims payment is complete", async () => {
+describe("PayPalCheckout — buyer approval, capture and cancellation", () => {
+  it("captures after approval and shows success only after verified COMPLETED", async () => {
     const calls = installFetch();
     const fake = installFakeSdk();
     vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
@@ -282,16 +310,141 @@ describe("PayPalCheckout — buyer approval and cancellation", () => {
     await act(async () => {
       await fake.configs[0]!.createOrder();
     });
+    expect(captureCalls(calls)).toHaveLength(0);
+
     await act(async () => {
-      fake.configs[0]!.onApprove?.({ orderID: "ORDER-123" });
+      await fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+    });
+
+    const captures = captureCalls(calls);
+    expect(captures).toHaveLength(1);
+    expect(captures[0]!.url).toContain(
+      `/api/paypal/orders/${ORDER_ID}/capture`,
+    );
+    expect(captures[0]!.init?.method).toBe("POST");
+    const headers = new Headers(captures[0]!.init?.headers);
+    expect(headers.get("x-shopmate-capture-token")).toBe(CAPTURE_TOKEN);
+    expect(String(captures[0]!.init?.body ?? "")).not.toContain("249.00");
+    expect(String(captures[0]!.init?.body ?? "")).not.toContain("amount");
+
+    expect(screen.getByText(/sandbox payment captured/i)).toBeTruthy();
+    expect(screen.getByText(new RegExp(CAPTURE_ID))).toBeTruthy();
+    expect(screen.getByText(/ShopMate Sandbox demonstration/i)).toBeTruthy();
+    expect(screen.queryByText(/capture pending/i)).toBeNull();
+    expect(screen.queryByText(/payment successful/i)).toBeNull();
+  });
+
+  it("shows a processing state while capture is in flight", async () => {
+    let release: (response: Response) => void = () => {};
+    const gate = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    installFetch({ capture: () => gate });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+
+    let approval: Promise<void> | void;
+    await act(async () => {
+      approval = fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+    });
+
+    expect(screen.getByText(/confirming payment/i)).toBeTruthy();
+    expect(screen.queryByText(/sandbox payment captured/i)).toBeNull();
+
+    release(jsonResponse(CAPTURE_RESPONSE));
+    await act(async () => {
+      await approval;
+    });
+    expect(await screen.findByText(/sandbox payment captured/i)).toBeTruthy();
+  });
+
+  it("shows pending capture honestly and never claims success", async () => {
+    installFetch({
+      capture: () =>
+        jsonResponse(
+          {
+            success: false,
+            error: "capture_pending",
+            status: "PENDING",
+            message: "PayPal is still processing the capture.",
+          },
+          202,
+        ),
+    });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+    await act(async () => {
+      await fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
     });
 
     expect(screen.getByText(/capture pending/i)).toBeTruthy();
-    expect(screen.getByText(/ORDER-123/)).toBeTruthy();
-    expect(screen.getByText(/not captured/i)).toBeTruthy();
-    expect(screen.queryByText(/payment complete/i)).toBeNull();
-    expect(screen.queryByText(/\bpaid\b/i)).toBeNull();
-    expect(calls.some((call) => call.url.includes("/capture"))).toBe(false);
+    expect(screen.getByText(/payment not complete/i)).toBeTruthy();
+    expect(screen.queryByText(/sandbox payment captured/i)).toBeNull();
+    expect(screen.queryByText(/payment successful/i)).toBeNull();
+  });
+
+  it("shows a denied capture honestly and never claims success", async () => {
+    installFetch({
+      capture: () =>
+        jsonResponse(
+          {
+            success: false,
+            error: "capture_denied",
+            status: "DENIED",
+            message: "PayPal denied the capture.",
+          },
+          402,
+        ),
+    });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+    await act(async () => {
+      await fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+    });
+
+    expect(screen.getByText(/denied the capture/i)).toBeTruthy();
+    expect(screen.getByText(/no payment was taken/i)).toBeTruthy();
+    expect(screen.queryByText(/sandbox payment captured/i)).toBeNull();
+    expect(screen.queryByText(/payment successful/i)).toBeNull();
+  });
+
+  it("prevents duplicate capture requests", async () => {
+    let release: (response: Response) => void = () => {};
+    const gate = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const calls = installFetch({ capture: () => gate });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+
+    await act(async () => {
+      const first = fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+      const second = fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+      release(jsonResponse(CAPTURE_RESPONSE));
+      await Promise.all([first, second]);
+    });
+
+    expect(captureCalls(calls)).toHaveLength(1);
   });
 
   it("handles buyer cancellation without claiming a payment", async () => {

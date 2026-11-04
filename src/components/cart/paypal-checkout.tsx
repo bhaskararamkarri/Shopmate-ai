@@ -1,17 +1,28 @@
 "use client";
 
 /**
- * ShopMate AI — PayPal Sandbox checkout buttons (Phase 5.3).
+ * ShopMate AI — PayPal Sandbox checkout buttons (Phase 5.3 + 5.4).
  *
  * The browser sends only product ids and quantities to the server. The server
  * re-prices the cart and creates the PayPal order; this component never sends
- * or trusts a price. Buyer approval stops at an explicit "capture pending"
- * state — Phase 5.3 does not capture payments and never claims an order is paid
- * or complete.
+ * or trusts a price. Buyer approval is followed by a server-side capture and
+ * verification call. Success is shown only when the server returns a verified
+ * COMPLETED capture whose amount matches the server-created order.
+ *
+ * The entire flow is an explicitly labelled sandbox demonstration: no real
+ * money moves, no retailer is paid, and no goods are shipped.
  */
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Clock, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatMoney } from "@/lib/format";
 import {
   loadPayPalSdk,
   PayPalSdkError,
@@ -29,7 +40,10 @@ type CheckoutPhase =
   | "ready"
   | "creating"
   | "approval"
-  | "approved"
+  | "capturing"
+  | "captured"
+  | "pending"
+  | "capture_error"
   | "cancelled"
   | "error";
 
@@ -44,6 +58,24 @@ interface PublicConfig {
 interface OrderResponse {
   success: true;
   orderId: string;
+  captureToken: string;
+}
+
+interface CaptureSuccess {
+  success: true;
+  environment: "sandbox";
+  demo: true;
+  orderId: string;
+  captureId: string;
+  status: "COMPLETED";
+  amount: { currency: "USD"; value: string };
+  referenceId: string;
+  alreadyCaptured: boolean;
+}
+
+interface CaptureState {
+  captureId: string;
+  amount: { currency: "USD"; value: string };
 }
 
 function isPublicConfig(value: unknown): value is PublicConfig {
@@ -67,12 +99,77 @@ function isPublicConfig(value: unknown): value is PublicConfig {
 
 function isOrderResponse(value: unknown): value is OrderResponse {
   if (!value || typeof value !== "object") return false;
-  const record = value as { success?: unknown; orderId?: unknown };
+  const record = value as {
+    success?: unknown;
+    orderId?: unknown;
+    captureToken?: unknown;
+  };
   return (
     record.success === true &&
     typeof record.orderId === "string" &&
-    record.orderId.trim().length > 0
+    record.orderId.trim().length > 0 &&
+    typeof record.captureToken === "string" &&
+    record.captureToken.trim().length > 0
   );
+}
+
+/** Success requires the server-verified COMPLETED shape, not just HTTP 200. */
+function isCaptureSuccess(
+  value: unknown,
+  expectedOrderId: string,
+): value is CaptureSuccess {
+  if (!value || typeof value !== "object") return false;
+  const record = value as {
+    success?: unknown;
+    orderId?: unknown;
+    captureId?: unknown;
+    status?: unknown;
+    amount?: { currency?: unknown; value?: unknown };
+  };
+  return (
+    record.success === true &&
+    record.orderId === expectedOrderId &&
+    record.status === "COMPLETED" &&
+    typeof record.captureId === "string" &&
+    record.captureId.trim().length > 0 &&
+    !!record.amount &&
+    record.amount.currency === "USD" &&
+    typeof record.amount.value === "string" &&
+    /^\d{1,9}\.\d{2}$/.test(record.amount.value)
+  );
+}
+
+function captureFailureCode(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as { success?: unknown; error?: unknown };
+  return record.success === false && typeof record.error === "string"
+    ? record.error
+    : null;
+}
+
+function captureFailureMessage(code: string | null): string {
+  switch (code) {
+    case "capture_denied":
+      return "PayPal denied the capture. No payment was taken.";
+    case "order_not_found":
+      return "This sandbox order is no longer available. No payment was taken. Start a new checkout.";
+    case "invalid_capture_token":
+      return "This checkout could not be verified. No payment was taken. Start a new checkout.";
+    case "amount_mismatch":
+    case "currency_mismatch":
+    case "order_id_mismatch":
+    case "purchase_unit_mismatch":
+    case "capture_verification_failed":
+      return "PayPal's capture did not match the server order. No payment is confirmed.";
+    case "paypal_timeout":
+      return "PayPal did not respond in time. The capture is unconfirmed; no payment is assumed.";
+    case "paypal_unavailable":
+      return "PayPal is temporarily unavailable. The capture is unconfirmed; no payment is assumed.";
+    case "capture_not_allowed":
+      return "PayPal did not accept this capture. No payment was taken. Start a new checkout.";
+    default:
+      return "PayPal did not confirm the capture. No payment is confirmed.";
+  }
 }
 
 /** Client-only idempotency key for the create-order request. */
@@ -90,6 +187,7 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [message, setMessage] = useState("");
   const [orderId, setOrderId] = useState<string>();
+  const [capture, setCapture] = useState<CaptureState | null>(null);
   const [sdk, setSdk] = useState<PayPalSdk | null>(null);
   const [retryToken, setRetryToken] = useState(0);
 
@@ -98,6 +196,10 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
   const submittingRef = useRef(false);
   const approvedRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const captureTokenRef = useRef<string | null>(null);
+  const createdOrderIdRef = useRef<string | null>(null);
+  const captureInFlightRef = useRef(false);
+  const capturedRef = useRef(false);
 
   // Keep the latest ids/quantities available to the PayPal callbacks without
   // re-rendering the Buttons frame on every parent render.
@@ -118,11 +220,89 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
     setPhase("loading");
     setSdk(null);
     setOrderId(undefined);
+    setCapture(null);
     setMessage("");
     submittingRef.current = false;
     approvedRef.current = false;
+    captureInFlightRef.current = false;
+    capturedRef.current = false;
     idempotencyKeyRef.current = null;
+    captureTokenRef.current = null;
+    createdOrderIdRef.current = null;
     setRetryToken((token) => token + 1);
+  }
+
+  /**
+   * Called only after the buyer approves. The server owns verification; this
+   * function shows success only for a COMPLETED, amount-checked response.
+   */
+  async function captureApprovedOrder(captureOrderId: string): Promise<void> {
+    if (captureInFlightRef.current || capturedRef.current) return;
+
+    const expectedOrderId = createdOrderIdRef.current;
+    const captureToken = captureTokenRef.current;
+    if (
+      !expectedOrderId ||
+      !captureToken ||
+      captureOrderId !== expectedOrderId
+    ) {
+      setPhase("capture_error");
+      setMessage(
+        "The PayPal approval did not match this ShopMate order. No capture was attempted.",
+      );
+      return;
+    }
+
+    approvedRef.current = true;
+    submittingRef.current = false;
+    captureInFlightRef.current = true;
+    setOrderId(expectedOrderId);
+    setMessage("");
+    setPhase("capturing");
+
+    try {
+      const response = await fetch(
+        `/api/paypal/orders/${encodeURIComponent(expectedOrderId)}/capture`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "X-ShopMate-Capture-Token": captureToken,
+          },
+        },
+      );
+      const payload: unknown = await response.json().catch(() => null);
+
+      if (response.ok && isCaptureSuccess(payload, expectedOrderId)) {
+        capturedRef.current = true;
+        setCapture({ captureId: payload.captureId, amount: payload.amount });
+        setPhase("captured");
+        return;
+      }
+
+      const code = captureFailureCode(payload);
+      if (response.status === 202 && code === "capture_pending") {
+        setPhase("pending");
+        setMessage(
+          "PayPal is still processing this capture. Payment is not complete yet.",
+        );
+        return;
+      }
+
+      setPhase("capture_error");
+      setMessage(captureFailureMessage(code));
+    } catch {
+      setPhase("capture_error");
+      setMessage(
+        "We couldn't confirm the payment capture. No payment is confirmed. Please try again.",
+      );
+    } finally {
+      captureInFlightRef.current = false;
+    }
+  }
+
+  function handleCaptureRetry(): void {
+    if (orderId) void captureApprovedOrder(orderId);
   }
 
   // Public config → official sandbox SDK. The endpoint returns only the public
@@ -191,6 +371,7 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         submittingRef.current = true;
         setPhase("creating");
         setMessage("");
+        setCapture(null);
 
         try {
           const response = await fetch("/api/paypal/orders", {
@@ -212,10 +393,16 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
             throw new Error("PayPal order creation failed.");
           }
 
+          const nextOrderId = payload.orderId.trim();
+          createdOrderIdRef.current = nextOrderId;
+          captureTokenRef.current = payload.captureToken.trim();
+          setOrderId(nextOrderId);
           setPhase("approval");
-          return payload.orderId.trim();
+          return nextOrderId;
         } catch (error) {
           submittingRef.current = false;
+          captureTokenRef.current = null;
+          createdOrderIdRef.current = null;
           setPhase("error");
           setMessage(
             "We couldn't create the PayPal order. No payment was taken. Please try again.",
@@ -225,23 +412,22 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
             : new Error("PayPal order creation failed.");
         }
       },
-      onApprove: (data) => {
-        // Buyer approval only. No capture call is made in Phase 5.3.
-        approvedRef.current = true;
-        submittingRef.current = false;
-        setOrderId(data.orderID);
-        setMessage("");
-        setPhase("approved");
-      },
+      onApprove: (data) => captureApprovedOrder(data.orderID),
       onCancel: () => {
+        if (captureInFlightRef.current || capturedRef.current) return;
         submittingRef.current = false;
         approvedRef.current = false;
+        captureTokenRef.current = null;
+        createdOrderIdRef.current = null;
         idempotencyKeyRef.current = createCheckoutKey();
         setPhase("cancelled");
       },
       onError: () => {
+        if (captureInFlightRef.current || capturedRef.current) return;
         submittingRef.current = false;
         approvedRef.current = false;
+        captureTokenRef.current = null;
+        createdOrderIdRef.current = null;
         idempotencyKeyRef.current = createCheckoutKey();
         setPhase("error");
         setMessage(
@@ -249,7 +435,12 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         );
       },
       onClick: (_data, actions) => {
-        if (submittingRef.current || approvedRef.current) {
+        if (
+          submittingRef.current ||
+          approvedRef.current ||
+          captureInFlightRef.current ||
+          capturedRef.current
+        ) {
           actions.reject();
         }
       },
@@ -275,7 +466,15 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
     };
   }, [sdk]);
 
-  const buttonsHidden = phase === "approved";
+  const buttonsHidden =
+    phase === "capturing" ||
+    phase === "captured" ||
+    phase === "pending" ||
+    phase === "capture_error";
+
+  const capturedAmount = capture
+    ? formatMoney(Number(capture.amount.value), capture.amount.currency)
+    : null;
 
   return (
     <section
@@ -353,24 +552,86 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
           </p>
         )}
 
-        {phase === "approved" && (
+        {phase === "capturing" && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-[13px] text-muted-foreground"
+          >
+            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            Confirming payment with PayPal…
+          </p>
+        )}
+
+        {phase === "captured" && capture && (
+          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-[12px] leading-relaxed text-emerald-950 dark:text-emerald-100">
+            <p className="flex items-center gap-1.5 font-semibold">
+              <CheckCircle2 aria-hidden="true" className="size-4" />
+              Sandbox payment captured
+            </p>
+            <p className="mt-1">
+              PayPal verified a COMPLETED capture for this demo order. No real
+              money moved and no goods will ship.
+            </p>
+            <p className="mt-1">
+              Captured amount: {capturedAmount} ({capture.amount.currency})
+            </p>
+            <p className="mt-2 text-[11px] text-emerald-900/80 dark:text-emerald-100/80">
+              Capture ID: <code className="font-mono">{capture.captureId}</code>
+              {orderId && (
+                <>
+                  {" "}
+                  · Order ID: <code className="font-mono">{orderId}</code>
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
+        {phase === "pending" && (
           <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
             <p className="flex items-center gap-1.5 font-semibold">
               <Clock aria-hidden="true" className="size-4" />
-              Payment approved — capture pending
+              Capture pending — payment not complete
             </p>
             <p className="mt-1">
-              PayPal approved this sandbox order. ShopMate has not captured the
-              payment, so this order is not complete.
+              PayPal is still processing this capture. ShopMate has not verified
+              a completed payment, so do not treat this order as paid.
             </p>
-            <p className="mt-1">
-              No money has moved and no goods will ship. Capture is Phase 5.4.
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 gap-1.5"
+              onClick={handleCaptureRetry}
+            >
+              <RefreshCw aria-hidden="true" />
+              Check capture again
+            </Button>
+          </div>
+        )}
+
+        {phase === "capture_error" && (
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-[13px] text-destructive"
+          >
+            <p className="flex items-start gap-2">
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0"
+              />
+              <span>{message}</span>
             </p>
-            {orderId && (
-              <p className="mt-2 text-[11px] text-sky-900/80 dark:text-sky-100/80">
-                Sandbox order ID: <code className="font-mono">{orderId}</code>
-              </p>
-            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 gap-1.5"
+              onClick={handleCaptureRetry}
+            >
+              <RefreshCw aria-hidden="true" />
+              Try capture again
+            </Button>
           </div>
         )}
 
