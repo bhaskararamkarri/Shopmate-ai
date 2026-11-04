@@ -24,6 +24,40 @@ export interface Product {
   sku?: string;
   /** True when this record comes from the local demo catalog, not the live API. */
   demo?: boolean;
+  /** Drawn iconography for demo records; real records rely on `images`. */
+  visual?: ProductVisual;
+  /** Comparable attributes powering advantage/trade-off notes. */
+  attributes?: ProductAttribute[];
+}
+
+/** Visual key for the code-drawn product tiles used across the demo UI. */
+export type ProductGlyph =
+  | 'headphones'
+  | 'earbuds'
+  | 'speaker'
+  | 'keyboard'
+  | 'mouse'
+  | 'lamp'
+  | 'watch'
+  | 'sleep-ring'
+  | 'camera'
+  | 'action-cam';
+
+/** Washed-out pastel surface tints for demo product tiles. */
+export type ProductTint = 'blue' | 'red' | 'green' | 'amber';
+
+/** Drawn tile appearance for demo products (inverted to real imagery once the live catalog lands). */
+export interface ProductVisual {
+  glyph: ProductGlyph;
+  tint: ProductTint;
+}
+
+/** A comparable product attribute, with the direction that counts as better when known. */
+export interface ProductAttribute {
+  label: string;
+  value: string;
+  /** 'higher' or 'lower' — the direction that reads as an advantage. Optional. */
+  better?: 'higher' | 'lower';
 }
 
 /** An item placed in the user's cart. */

@@ -7,9 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-geist-sans);
+  --color-navy: var(--navy);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -50,23 +51,27 @@
 
 :root {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.25 0.04 258);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.25 0.04 258);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.25 0.04 258);
+  /* Tasteful blue — slightly desaturated for premium feel. */
+  --primary: oklch(0.53 0.17 259);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.965 0.008 252);
+  --secondary-foreground: oklch(0.3 0.03 258);
+  --muted: oklch(0.965 0.008 252);
+  /* Running copy color — kept above 6:1 contrast on white surfaces. */
+  --muted-foreground: oklch(0.44 0.03 256);
+  --accent: oklch(0.94 0.02 250);
+  --accent-foreground: oklch(0.3 0.04 258);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.915 0.008 252);
+  --input: oklch(0.915 0.008 252);
+  --ring: oklch(0.62 0.13 256);
+  /* Deep navy for structural bands (CTA section, primary text accents). */
+  --navy: oklch(0.21 0.045 259);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -74,47 +79,53 @@
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-foreground: oklch(0.25 0.04 258);
+  --sidebar-primary: oklch(0.53 0.17 259);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.94 0.02 250);
+  --sidebar-accent-foreground: oklch(0.3 0.04 258);
+  --sidebar-border: oklch(0.915 0.008 252);
+  --sidebar-ring: oklch(0.62 0.13 256);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.17 0.02 258);
+  --foreground: oklch(0.96 0.005 252);
+  --card: oklch(0.21 0.025 258);
+  --card-foreground: oklch(0.96 0.005 252);
+  --popover: oklch(0.21 0.025 258);
+  --popover-foreground: oklch(0.96 0.005 252);
+  --primary: oklch(0.65 0.16 258);
+  --primary-foreground: oklch(0.14 0.03 258);
+  --secondary: oklch(0.26 0.02 258);
+  --secondary-foreground: oklch(0.96 0.005 252);
+  --muted: oklch(0.26 0.02 258);
+  --muted-foreground: oklch(0.68 0.02 256);
+  --accent: oklch(0.28 0.03 258);
+  --accent-foreground: oklch(0.96 0.005 252);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.96 0.005 252 / 10%);
+  --input: oklch(0.96 0.005 252 / 15%);
+  --ring: oklch(0.62 0.13 256);
+  --navy: oklch(0.14 0.035 259);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.21 0.025 258);
+  --sidebar-foreground: oklch(0.96 0.005 252);
+  --sidebar-primary: oklch(0.65 0.16 258);
+  --sidebar-primary-foreground: oklch(0.14 0.03 258);
+  --sidebar-accent: oklch(0.28 0.03 258);
+  --sidebar-accent-foreground: oklch(0.96 0.005 252);
+  --sidebar-border: oklch(0.96 0.005 252 / 10%);
+  --sidebar-ring: oklch(0.62 0.13 256);
+}
+
+::selection {
+  background: oklch(0.87 0.05 252);
+  color: oklch(0.2 0.05 258);
 }
 
 @layer base {
@@ -126,5 +137,79 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/*
+ * Scroll reveal (Reveal component). The hidden state ships only as a
+ * data-reveal attribute set from JS, so markup without JavaScript stays fully
+ * visible. Reduced motion keeps the opacity crossfade and drops the travel:
+ * fewer and gentler, not none.
+ */
+[data-reveal="hidden"] {
+  opacity: 0;
+}
+[data-reveal="visible"] {
+  opacity: 1;
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-reveal-kind="rise"][data-reveal="hidden"] {
+    transform: translateY(24px);
+  }
+  [data-reveal-kind="rise"][data-reveal="visible"] {
+    transition:
+      opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  [data-reveal-kind="settle"][data-reveal="hidden"] {
+    transform: scale(0.985);
+  }
+  [data-reveal-kind="settle"][data-reveal="visible"] {
+    transition:
+      opacity 700ms cubic-bezier(0.33, 1, 0.68, 1),
+      transform 1100ms cubic-bezier(0.33, 1, 0.68, 1);
+  }
+}
+
+/* Masked hero headline: each authored line rises from behind its own mask. */
+.lines .line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.09em;
+  margin-bottom: -0.09em;
+}
+.lines [data-line] {
+  display: block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lines [data-line] {
+    transform: translateY(108%);
+    animation: line-up 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: calc(var(--i, 0) * 110ms + 120ms);
+  }
+  @keyframes line-up {
+    to {
+      transform: none;
+    }
+  }
+}
+
+/* Slow drift inside the category photo frames as they scroll into view. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .tile-photo {
+      animation: tile-drift 1ms linear both;
+      animation-timeline: view();
+      animation-range: entry 15% cover 45%;
+    }
+    @keyframes tile-drift {
+      from {
+        transform: translateY(-4%) scale(1.04);
+      }
+      to {
+        transform: none;
+      }
+    }
   }
 }
