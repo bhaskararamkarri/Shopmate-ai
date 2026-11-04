@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Lock, Trash } from "lucide-react";
+import { Trash } from "lucide-react";
 import { cn } from "cn";
 import type { CartItem } from "@/types";
 import { Button } from "@/components/ui/button";
+import { PayPalCheckout } from "@/components/cart/paypal-checkout";
 import { formatMoney } from "@/lib/format";
 
 /**
  * Cart totals panel. Every number here is a frontend display value only —
- * final totals are recalculated and validated server-side (and PayPal-backed)
- * in later phases, so the checkout action stays honestly disabled.
+ * the PayPal order endpoint recalculates and validates the final amount
+ * server-side. The checkout itself is a labeled PayPal Sandbox demo.
  */
 export function CartSummary({
   items,
@@ -28,6 +29,11 @@ export function CartSummary({
     (sum, item) => sum + item.product.price * item.quantity,
     0,
   );
+  // Remount the checkout when the cart changes so a new order starts from a
+  // clean buyer-approval state.
+  const checkoutKey = items
+    .map((item) => `${item.product.id}:${item.quantity}`)
+    .join("|");
 
   function handleClear() {
     if (confirmingClear) {
@@ -57,7 +63,7 @@ export function CartSummary({
         </div>
         <div className="flex items-center justify-between">
           <dt className="text-muted-foreground">Shipping</dt>
-          <dd className="text-muted-foreground">Calculated at checkout</dd>
+          <dd className="text-muted-foreground">No shipping — demo transaction</dd>
         </div>
         <div className="flex items-center justify-between border-t border-border pt-3">
           <dt className="text-[15px] font-semibold text-foreground">
@@ -69,14 +75,18 @@ export function CartSummary({
         </div>
       </dl>
 
-      <Button type="button" size="lg" className="mt-5 h-11 w-full" disabled>
-        <Lock aria-hidden="true" />
-        Checkout
-      </Button>
-      <p className="mt-2 text-center text-[13px] leading-relaxed text-muted-foreground">
-        Checkout stays disabled in this preview — PayPal integration and totals
-        validated server-side arrive in a later phase.
+      <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+        Final amount is recalculated and validated on the server by PayPal order
+        creation.
       </p>
+
+      <PayPalCheckout
+        key={checkoutKey}
+        items={items.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+        }))}
+      />
 
       <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
         <Button

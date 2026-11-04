@@ -33,8 +33,9 @@ export function Footer() {
             </p>
             <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
               Product search runs on the live Channel3 catalog, with demo data
-              clearly labeled wherever it is used. The AI chat model and PayPal
-              checkout arrive in later phases.
+              clearly labeled wherever it is used. The AI chat model is live;
+              PayPal checkout runs in sandbox demo mode and stops at buyer
+              approval — capture is not implemented.
             </p>
           </div>
 
@@ -60,7 +61,7 @@ export function Footer() {
               <li>Next.js App Router</li>
               <li>Tailwind CSS v4 + shadcn/ui</li>
               <li>lucide icons</li>
-              <li>PayPal-ready checkout (planned)</li>
+              <li>PayPal Sandbox checkout (capture pending)</li>
             </ul>
           </div>
         </div>
