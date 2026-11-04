@@ -144,6 +144,24 @@ function createContext(
 }
 
 /**
+ * Deterministic budget extraction for the keyword fallback path ("under $80",
+ * "below 50", "budget of 200"). The AI path extracts intent via the model;
+ * the fallback only honors explicit price-cap phrasing, and only in USD —
+ * the site's catalog currency — never a guessed exchange rate.
+ */
+export function parseBudgetHint(
+  message: string,
+): { amount: number; currency: string } | null {
+  const match = message.match(
+    /(?:under|below|less\s+than|max(?:imum)?|up\s+to|budget(?:\s+of)?)\s*\$?\s*([\d,]+(?:\.\d+)?)/i,
+  );
+  if (!match) return null;
+  const amount = Number(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return { amount, currency: "USD" };
+}
+
+/**
  * Deterministic no-AI turn: keyword search + relevance gate + ranking, with
  * copy that says plainly what happened. Never presented as AI output.
  */
@@ -154,18 +172,23 @@ export async function runKeywordFallbackTurn(
   const query = normalizeQuery(input.message);
   const outcome = await catalog.search(query, { limit: 10, userId: input.userId });
 
+  const budgetHint = parseBudgetHint(input.message);
   const { relevant, rejected, suggestion } = tokenize(query).length
-    ? // Relevance gate with no intent yet — the message is all we know.
-      filterRelevant(outcome.products, { tokens: tokenize(query) })
+    ? // Relevance gate with no intent yet — the message (plus any explicit
+      // budget phrasing) is all we know.
+      filterRelevant(outcome.products, {
+        tokens: tokenize(query),
+        budget: budgetHint ?? undefined,
+      })
     : { relevant: [], rejected: [], suggestion: undefined };
 
   const catalogLog = new Map(relevant.map((r) => [r.product.id, r.product]));
 
   const intro = relevant.length
-    ? `AI assistance isn't configured right now, so I ran a keyword search for “${query}” on the ${outcome.source === "demo" ? "demo catalog" : "live catalog"}. These are straight keyword matches, ranked deterministically — not AI-picked recommendations:`
+    ? `AI assistance isn't configured right now, so I ran a keyword search for “${query}” on the ${outcome.source === "demo" ? "demo catalog" : "live catalog"}.${budgetHint ? ` Results are filtered to your ${budgetHint.amount} ${budgetHint.currency} budget.` : ""} These are straight keyword matches, ranked deterministically — not AI-picked recommendations:`
     : `AI assistance isn't configured right now, and a keyword search for “${query}” found no confident matches.${rejected.length > 0 ? ` ${rejected.length} result(s) were filtered out as irrelevant.` : ""}${suggestion ? ` ${suggestion}` : ""}`;
 
-  const intent: ShoppingIntent = { ...emptyIntent(), query };
+  const intent: ShoppingIntent = { ...emptyIntent(), query, budget: budgetHint };
 
   return assembleTurn({
     content: intro,

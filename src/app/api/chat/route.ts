@@ -19,8 +19,12 @@ import { checkRateLimit } from "@/lib/agent/rate-limit";
 
 export const maxDuration = 60;
 
-/** Per-IP chat turns per minute. Conservative: each turn can spend credits. */
-const RATE_LIMIT = 10;
+/** Per-IP chat turns per minute. Conservative: each turn can spend credits.
+ * SHOPMATE_CHAT_RATE_LIMIT overrides (tests/E2E raise it; clamped 1–1000). */
+const RATE_LIMIT = Math.min(
+  1000,
+  Math.max(1, Number(process.env.SHOPMATE_CHAT_RATE_LIMIT ?? 10) || 10),
+);
 const RATE_WINDOW_MS = 60_000;
 
 const USER_ID_COOKIE = "shopmate_uid";

@@ -209,6 +209,24 @@ describe("runAgentTurn — keyword fallback", () => {
     expect(result.content).toContain("keyword");
     expect(result.mode).toBe("keyword_fallback");
   });
+
+  it("honors an explicit budget phrase deterministically", async () => {
+    setEnv({});
+    const catalog = {
+      search: vi.fn(async () => ({
+        source: "demo" as const,
+        products: [cheap, pricey],
+      })),
+      getProduct: vi.fn(async () => null),
+    };
+    const result = await runAgentTurn(
+      { history: [], message: "wireless headphones under $100" },
+      { catalog },
+    );
+    expect(result.products.map((p) => p.id)).toEqual(["cheap"]);
+    expect(result.intent.budget).toEqual({ amount: 100, currency: "USD" });
+    expect(result.content).toContain("budget");
+  });
 });
 
 describe("runAgentTurn — error mapping", () => {
