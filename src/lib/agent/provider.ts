@@ -1,64 +1,76 @@
 /**
- * ShopMate AI — AI provider abstraction (Phase 4).
+ * ShopMate AI — Multi-Provider Abstraction & Candidate Resolution (Phase 8).
  *
- * Resolves the chat model from environment configuration so the shopping
- * logic never depends on a specific vendor. Three providers:
+ * Resolves chat models from environment configuration across:
+ * 1. `google` — Gemini via `@ai-sdk/google` (primary cloud provider).
+ *    Key: `GOOGLE_GENERATIVE_AI_API_KEY` (AI SDK default) or `GEMINI_API_KEY`.
+ * 2. `cerebras` — Cerebras Inference via `@ai-sdk/cerebras` (ultra-fast secondary).
+ *    Key: `CEREBRAS_API_KEY`.
+ * 3. `groq` — Groq via `@ai-sdk/openai-compatible` (tertiary provider).
+ *    Key: `GROQ_API_KEY`.
+ * 4. `openrouter` — OpenRouter via `@ai-sdk/openai-compatible` (optional fallback).
+ *    Key: `OPENROUTER_API_KEY`.
+ * 5. `ollama` — Local OpenAI-compatible server (development fallback).
  *
- * - `groq` — Groq's OpenAI-compatible API (primary cloud provider). The key
- *   lives in `GROQ_API_KEY` (server-side only, never logged) and every
- *   request is bounded by a timeout.
- * - `google` — Gemini via `@ai-sdk/google`. The key lives in
- *   `GOOGLE_GENERATIVE_AI_API_KEY` (the AI SDK default) or `GEMINI_API_KEY`
- *   as an alias; it is read here once and never logged.
- * - `ollama` — any local OpenAI-compatible server via `@ai-sdk/openai-compatible`,
- *   a development fallback that needs no cloud key.
- *
- * No network calls happen here: this module only builds model instances.
+ * Keys live strictly server-side and are never logged or exposed.
  */
 import { createGoogle } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 
-export type AIProviderName = "google" | "groq" | "ollama";
+export type AIProviderName = "google" | "cerebras" | "groq" | "openrouter" | "ollama";
 
-/** Default chat model per provider (all free to run). */
+/** Default chat model per provider. Verified current active models. */
 export const DEFAULT_MODELS: Record<AIProviderName, string> = {
   google: "gemini-3.8-flash",
+  cerebras: "llama-3.3-70b",
   groq: "openai/gpt-oss-120b",
+  openrouter: "openrouter/free",
   ollama: "gemma3:4b",
 };
 
+/** Default automatic fallback priority chain. */
+export const DEFAULT_PRIORITY: AIProviderName[] = [
+  "google",
+  "cerebras",
+  "groq",
+  "openrouter",
+  "ollama",
+];
+
 const DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/v1";
+const DEFAULT_CEREBRAS_URL = "https://api.cerebras.ai/v1";
 const DEFAULT_GROQ_URL = "https://api.groq.com/openai/v1";
+const DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
-/** Outbound Groq request timeout: env-overridable, clamped to a safe range. */
-const DEFAULT_GROQ_TIMEOUT_MS = 15_000;
-const MIN_GROQ_TIMEOUT_MS = 3_000;
-const MAX_GROQ_TIMEOUT_MS = 60_000;
+/** Default outbound request timeout per provider in milliseconds. */
+const DEFAULT_TIMEOUT_MS = 15_000;
+const MIN_TIMEOUT_MS = 2_000;
+const MAX_TIMEOUT_MS = 60_000;
 
-function groqTimeoutMs(): number {
-  const raw = process.env.SHOPMATE_AI_TIMEOUT_MS;
+function readEnv(name: string): string | undefined {
+  const value = process.env[name];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Outbound provider timeout: env-overridable (per provider or global), clamped safely.
+ */
+export function aiTimeoutMs(provider?: AIProviderName): number {
+  const specificKey = provider
+    ? `SHOPMATE_AI_TIMEOUT_${provider.toUpperCase()}_MS`
+    : undefined;
+  const raw =
+    (specificKey ? readEnv(specificKey) : undefined) ??
+    readEnv("SHOPMATE_AI_TIMEOUT_MS");
   const parsed = raw === undefined ? NaN : Number(raw);
-  if (!Number.isFinite(parsed)) return DEFAULT_GROQ_TIMEOUT_MS;
-  return Math.min(
-    Math.max(Math.round(parsed), MIN_GROQ_TIMEOUT_MS),
-    MAX_GROQ_TIMEOUT_MS,
-  );
+  if (!Number.isFinite(parsed)) return DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.max(Math.round(parsed), MIN_TIMEOUT_MS), MAX_TIMEOUT_MS);
 }
 
 /**
  * Fetch wrapper bounding every Groq request with a timeout. Combines the
  * SDK's own abort signal (when present) with the timeout so either can fire.
- */
-/**
- * Groq's OpenAI-compatible API rejects `reasoning_content` on incoming
- * assistant messages ("messages.N: for role:assistant property
- * 'reasoning_content' is unsupported", HTTP 400) while its reasoning models
- * (e.g. openai/gpt-oss-120b) return reasoning that the AI SDK stores and
- * re-sends on the next tool-loop step. Removes exactly that unsupported
- * field from outgoing chat-completion request bodies; tool calls, tool
- * results, ids and ordering are untouched. Non-JSON bodies and bodies
- * without a messages array pass through unchanged.
  */
 export function stripGroqUnsupportedRequestFields(body: string): string {
   let parsed: unknown;
@@ -90,15 +102,9 @@ export function stripGroqUnsupportedRequestFields(body: string): string {
   return changed ? JSON.stringify(parsed) : body;
 }
 
-/**
- * Builds the Groq transport: strips fields Groq rejects on incoming messages
- * and bounds every request with a timeout. `underlying` is the fetch
- * implementation to call through to (the global fetch in production; tests
- * inject a capturing fetch here and still get the same transformations).
- */
 function createGroqFetch(underlying: typeof fetch = fetch): typeof fetch {
   return (input, init) => {
-    const timeoutSignal = AbortSignal.timeout(groqTimeoutMs());
+    const timeoutSignal = AbortSignal.timeout(aiTimeoutMs("groq"));
     const upstream = init?.signal;
     const signal = upstream
       ? AbortSignal.any([upstream, timeoutSignal])
@@ -117,10 +123,44 @@ function createGroqFetch(underlying: typeof fetch = fetch): typeof fetch {
   };
 }
 
-/**
- * Builds the Groq chat model. Split out from `resolveChatModel` so tests can
- * inject a capturing fetch and exercise the real provider serialization.
- */
+function createTimeoutFetch(provider: AIProviderName, underlying: typeof fetch = fetch): typeof fetch {
+  return (input, init) => {
+    const timeoutSignal = AbortSignal.timeout(aiTimeoutMs(provider));
+    const upstream = init?.signal;
+    const signal = upstream
+      ? AbortSignal.any([upstream, timeoutSignal])
+      : timeoutSignal;
+    return underlying(input, { ...init, signal });
+  };
+}
+
+/** Builds the Google Gemini chat model. */
+export function createGoogleModel(
+  apiKey: string,
+  options?: { modelId?: string; fetch?: typeof fetch },
+): LanguageModel {
+  const google = createGoogle({
+    apiKey,
+    fetch: createTimeoutFetch("google", options?.fetch ?? fetch),
+  });
+  return google(options?.modelId ?? resolveModelId("google"));
+}
+
+/** Builds the Cerebras Inference model. */
+export function createCerebrasModel(
+  apiKey: string,
+  options?: { modelId?: string; fetch?: typeof fetch },
+): LanguageModel {
+  const cerebras = createOpenAICompatible({
+    name: "cerebras",
+    baseURL: DEFAULT_CEREBRAS_URL,
+    apiKey,
+    fetch: createTimeoutFetch("cerebras", options?.fetch ?? fetch),
+  });
+  return cerebras(options?.modelId ?? resolveModelId("cerebras"));
+}
+
+/** Builds the Groq chat model. */
 export function createGroqModel(
   apiKey: string,
   options?: { modelId?: string; fetch?: typeof fetch },
@@ -131,68 +171,246 @@ export function createGroqModel(
     apiKey,
     fetch: createGroqFetch(options?.fetch),
   });
-  return groq(options?.modelId ?? resolveModelId());
+  return groq(options?.modelId ?? resolveModelId("groq"));
 }
 
-function readEnv(name: string): string | undefined {
-  const value = process.env[name];
-  return value && value.trim() ? value.trim() : undefined;
+/** Builds the OpenRouter chat model. */
+export function createOpenRouterModel(
+  apiKey: string,
+  options?: { modelId?: string; fetch?: typeof fetch },
+): LanguageModel {
+  const openrouter = createOpenAICompatible({
+    name: "openrouter",
+    baseURL: DEFAULT_OPENROUTER_URL,
+    apiKey,
+    headers: {
+      "HTTP-Referer": "https://shopmate-ai.com",
+      "X-Title": "ShopMate AI",
+    },
+    fetch: createTimeoutFetch("openrouter", options?.fetch ?? fetch),
+  });
+  return openrouter(options?.modelId ?? resolveModelId("openrouter"));
 }
 
-/** The selected provider: `SHOPMATE_AI_PROVIDER`, defaulting to google. */
+/** Builds the local Ollama model. */
+export function createOllamaModel(
+  options?: { modelId?: string; baseURL?: string; fetch?: typeof fetch },
+): LanguageModel {
+  const ollama = createOpenAICompatible({
+    name: "ollama",
+    baseURL: options?.baseURL ?? readEnv("SHOPMATE_OLLAMA_URL") ?? DEFAULT_OLLAMA_URL,
+    fetch: createTimeoutFetch("ollama", options?.fetch ?? fetch),
+  });
+  return ollama(options?.modelId ?? resolveModelId("ollama"));
+}
+
+/** Returns the configured model id for a specific provider. */
+export function resolveModelId(provider: AIProviderName = getProviderName()): string {
+  const specificKey = `SHOPMATE_AI_MODEL_${provider.toUpperCase()}`;
+  const specificOverride = readEnv(specificKey);
+  if (specificOverride) return specificOverride;
+
+  const genericOverride = readEnv("SHOPMATE_AI_MODEL");
+  if (genericOverride) {
+    // Prevent cross-provider model mismatches (e.g. Groq openai/ models passed to Google)
+    if (
+      provider === "google" &&
+      (genericOverride.startsWith("openai/") || genericOverride.includes("llama"))
+    ) {
+      return DEFAULT_MODELS.google;
+    }
+    if (provider === "groq" && genericOverride.startsWith("gemini-")) {
+      return DEFAULT_MODELS.groq;
+    }
+    if (
+      provider === "cerebras" &&
+      (genericOverride.startsWith("gemini-") || genericOverride.startsWith("openai/"))
+    ) {
+      return DEFAULT_MODELS.cerebras;
+    }
+    return genericOverride;
+  }
+  return DEFAULT_MODELS[provider] ?? DEFAULT_MODELS.google;
+}
+
+/** Returns whether a specific provider has valid credentials/configuration. */
+export function isProviderConfigured(provider: AIProviderName): boolean {
+  if (provider === "ollama") {
+    // Only configured if explicitly requested or local url set
+    return (
+      readEnv("SHOPMATE_AI_PROVIDER") === "ollama" ||
+      Boolean(readEnv("SHOPMATE_OLLAMA_URL"))
+    );
+  }
+  if (provider === "google") {
+    return Boolean(
+      readEnv("GOOGLE_GENERATIVE_AI_API_KEY") ?? readEnv("GEMINI_API_KEY"),
+    );
+  }
+  if (provider === "cerebras") {
+    return Boolean(readEnv("CEREBRAS_API_KEY"));
+  }
+  if (provider === "groq") {
+    return Boolean(readEnv("GROQ_API_KEY"));
+  }
+  if (provider === "openrouter") {
+    return Boolean(readEnv("OPENROUTER_API_KEY"));
+  }
+  return false;
+}
+
+/** Resolves ordered provider priority based on environment configuration. */
+export function getProviderPriority(): AIProviderName[] {
+  const customList = readEnv("SHOPMATE_AI_PROVIDERS");
+  if (customList) {
+    const parsed = customList
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s): s is AIProviderName =>
+        ["google", "cerebras", "groq", "openrouter", "ollama"].includes(s),
+      );
+    if (parsed.length > 0) return parsed;
+  }
+
+  const single = readEnv("SHOPMATE_AI_PROVIDER");
+  if (single) {
+    const valid: AIProviderName = (
+      ["google", "cerebras", "groq", "openrouter", "ollama"] as AIProviderName[]
+    ).includes(single as AIProviderName)
+      ? (single as AIProviderName)
+      : "google";
+    const others = DEFAULT_PRIORITY.filter((p) => p !== valid);
+    return [valid, ...others];
+  }
+
+  return DEFAULT_PRIORITY;
+}
+
+/** The selected primary provider name. */
 export function getProviderName(): AIProviderName {
-  const selected = readEnv("SHOPMATE_AI_PROVIDER");
-  if (selected === "groq") return "groq";
-  if (selected === "ollama") return "ollama";
-  return "google";
+  const single = readEnv("SHOPMATE_AI_PROVIDER");
+  if (single) {
+    if (
+      (["google", "cerebras", "groq", "openrouter", "ollama"] as AIProviderName[]).includes(
+        single as AIProviderName,
+      )
+    ) {
+      return single as AIProviderName;
+    }
+    return "google";
+  }
+  const priority = getProviderPriority();
+  return priority[0] ?? "google";
 }
 
-/** The configured model id for the selected provider. */
-export function resolveModelId(): string {
-  const override = readEnv("SHOPMATE_AI_MODEL");
-  if (override) return override;
-  return DEFAULT_MODELS[getProviderName()];
+export interface ProviderCandidate {
+  name: AIProviderName;
+  modelId: string;
+  createModel: () => LanguageModel;
+  timeoutMs: number;
+}
+
+/** Returns the list of all currently configured and ready-to-run provider candidates. */
+export function getConfiguredProviders(options?: {
+  fetch?: typeof fetch;
+}): ProviderCandidate[] {
+  const single = readEnv("SHOPMATE_AI_PROVIDER");
+  const priority = getProviderPriority();
+  const candidates: ProviderCandidate[] = [];
+
+  for (const name of priority) {
+    // If a user explicitly pinned a single provider (legacy SHOPMATE_AI_PROVIDER),
+    // we prioritize that provider; if they pinned it alone without SHOPMATE_AI_PROVIDERS,
+    // only that provider is configured if they want strict single-provider behavior.
+    if (single && !readEnv("SHOPMATE_AI_PROVIDERS") && name !== single) {
+      // Legacy behavior: when SHOPMATE_AI_PROVIDER is set, only that provider is active
+      continue;
+    }
+
+    if (!isProviderConfigured(name)) continue;
+    const modelId = resolveModelId(name);
+    const timeoutMs = aiTimeoutMs(name);
+
+    if (name === "google") {
+      const apiKey =
+        readEnv("GOOGLE_GENERATIVE_AI_API_KEY") ?? readEnv("GEMINI_API_KEY");
+      if (apiKey) {
+        candidates.push({
+          name: "google",
+          modelId,
+          createModel: () => createGoogleModel(apiKey, { modelId, fetch: options?.fetch }),
+          timeoutMs,
+        });
+      }
+    } else if (name === "cerebras") {
+      const apiKey = readEnv("CEREBRAS_API_KEY");
+      if (apiKey) {
+        candidates.push({
+          name: "cerebras",
+          modelId,
+          createModel: () =>
+            createCerebrasModel(apiKey, { modelId, fetch: options?.fetch }),
+          timeoutMs,
+        });
+      }
+    } else if (name === "groq") {
+      const apiKey = readEnv("GROQ_API_KEY");
+      if (apiKey) {
+        candidates.push({
+          name: "groq",
+          modelId,
+          createModel: () =>
+            createGroqModel(apiKey, { modelId, fetch: options?.fetch }),
+          timeoutMs,
+        });
+      }
+    } else if (name === "openrouter") {
+      const apiKey = readEnv("OPENROUTER_API_KEY");
+      if (apiKey) {
+        candidates.push({
+          name: "openrouter",
+          modelId,
+          createModel: () =>
+            createOpenRouterModel(apiKey, { modelId, fetch: options?.fetch }),
+          timeoutMs,
+        });
+      }
+    } else if (name === "ollama") {
+      candidates.push({
+        name: "ollama",
+        modelId,
+        createModel: () =>
+          createOllamaModel({ modelId, fetch: options?.fetch }),
+        timeoutMs,
+      });
+    }
+  }
+
+  return candidates;
 }
 
 /**
- * True when the selected provider can be constructed. Google needs an API
- * key (server-side only); Ollama needs nothing beyond the local server.
+ * True when at least one candidate provider has valid configuration.
  */
 export function isAIConfigured(): boolean {
-  const provider = getProviderName();
-  if (provider === "ollama") return true;
-  if (provider === "groq") return Boolean(readEnv("GROQ_API_KEY"));
-  return Boolean(
-    readEnv("GOOGLE_GENERATIVE_AI_API_KEY") ?? readEnv("GEMINI_API_KEY"),
-  );
+  const single = readEnv("SHOPMATE_AI_PROVIDER");
+  if (single && !readEnv("SHOPMATE_AI_PROVIDERS")) {
+    const valid = (
+      ["google", "cerebras", "groq", "openrouter", "ollama"] as AIProviderName[]
+    ).includes(single as AIProviderName)
+      ? (single as AIProviderName)
+      : "google";
+    return isProviderConfigured(valid);
+  }
+  return getConfiguredProviders().length > 0;
 }
 
 /**
- * Builds the chat model for the selected provider, or null when the
- * configuration is incomplete. Callers treat null as "AI unavailable" and
- * fall back to the deterministic keyword path.
+ * Builds the chat model for the primary configured provider, or null when
+ * no provider is ready.
  */
 export function resolveChatModel(): LanguageModel | null {
-  const provider = getProviderName();
-  const modelId = resolveModelId();
-
-  if (provider === "ollama") {
-    const ollama = createOpenAICompatible({
-      name: "ollama",
-      baseURL: readEnv("SHOPMATE_OLLAMA_URL") ?? DEFAULT_OLLAMA_URL,
-    });
-    return ollama(modelId);
-  }
-
-  if (provider === "groq") {
-    const apiKey = readEnv("GROQ_API_KEY");
-    if (!apiKey) return null;
-    return createGroqModel(apiKey, { modelId });
-  }
-
-  const apiKey = readEnv("GOOGLE_GENERATIVE_AI_API_KEY") ?? readEnv("GEMINI_API_KEY");
-  if (!apiKey) return null;
-
-  const google = createGoogle({ apiKey });
-  return google(modelId);
+  const configured = getConfiguredProviders();
+  if (configured.length === 0) return null;
+  return configured[0].createModel();
 }

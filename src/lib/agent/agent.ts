@@ -27,7 +27,15 @@ import {
   type AgentToolContext,
 } from "./tools";
 import { buildInstructions } from "./instructions";
-import { getProviderName, isAIConfigured, resolveChatModel, resolveModelId } from "./provider";
+import {
+  getConfiguredProviders,
+  type ProviderCandidate,
+} from "./provider";
+import {
+  executeWithFailover,
+  AllProvidersFailedError,
+  type ProviderAttemptRecord,
+} from "./failover";
 import { getCatalogProduct, searchCatalog } from "@/lib/catalog/provider";
 import type { ChatApiSuccess, ChatComparison } from "./chat-contract";
 
@@ -44,6 +52,8 @@ export class AgentTurnError extends Error {
     message: string,
     /** Upstream HTTP status when the failure came from an API response. */
     readonly upstreamStatus?: number,
+    /** Diagnostic log of individual provider attempts in the failover chain. */
+    readonly attempts?: ProviderAttemptRecord[],
   ) {
     super(message);
     this.name = "AgentTurnError";
@@ -64,6 +74,10 @@ export interface RunAgentTurnInput {
 export interface RunAgentTurnDeps {
   /** Injectable catalog (tests stub this). Defaults to the real provider. */
   catalog?: AgentCatalog;
+  /** Injectable provider candidates (tests stub this for failover scenarios). */
+  providers?: ProviderCandidate[];
+  /** Optional custom fetch. */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -268,7 +282,9 @@ export async function runAgentTurn(
     getProduct: (id) => getCatalogProduct(id).then((r) => r?.product ?? null),
   };
 
-  if (!isAIConfigured()) {
+  const candidates =
+    deps.providers ?? getConfiguredProviders({ fetch: deps.fetch });
+  if (candidates.length === 0) {
     return runKeywordFallbackTurn(input, catalog);
   }
 
@@ -283,86 +299,95 @@ export async function runAgentTurn(
   if (!baseIntent.query && input.message) {
     baseIntent.query = normalizeQuery(input.message);
   }
-  const intentRef = { current: baseIntent };
-  const ctx = createContext(catalog, intentRef, input.userId);
+
+  // Bound history to at most the last 2 turns (4 messages) to stay well within token limits.
+  // Truncate assistant content so verbose markdown doesn't blow past rate limits on multi-turn.
+  const boundedHistory: ModelMessage[] = input.history.slice(-4).map((h) => ({
+    role: h.role,
+    content: h.role === "assistant" ? truncate(h.content, 350) : truncate(h.content, 200),
+  }));
+
+  const messages: ModelMessage[] = [
+    ...boundedHistory,
+    { role: "user", content: input.message },
+  ];
 
   try {
-    const model = resolveChatModel();
-    if (!model) {
-      return runKeywordFallbackTurn(input, catalog);
-    }
-
-    const allTools = createAgentTools(ctx);
-    // Expose only the actionable catalog tools to the agent loop.
-    // Excluding intermediate meta-tools (refineSearch, recordIntent) prevents
-    // wasteful multi-step looping and keeps prompt schemas small and fast.
-    const tools = {
-      searchProducts: allTools.searchProducts,
-      getProductDetails: allTools.getProductDetails,
-      compareProducts: allTools.compareProducts,
-    };
-
-    const agent = new ToolLoopAgent({
-      model,
-      instructions: buildInstructions(intentRef.current),
-      tools,
-      stopWhen: isStepCount(MAX_STEPS),
-      maxOutputTokens: 1024,
-      providerOptions:
-        getProviderName() === "google"
-          ? { google: { thinkingConfig: { thinkingLevel: "minimal" } } }
-          : undefined,
-    });
-
-    // Bound history to at most the last 2 turns (4 messages) to stay well within token limits.
-    // Truncate assistant content so verbose markdown doesn't blow past rate limits on multi-turn.
-    const boundedHistory: ModelMessage[] = input.history.slice(-4).map((h) => ({
-      role: h.role,
-      content: h.role === "assistant" ? truncate(h.content, 350) : truncate(h.content, 200),
-    }));
-
-    const messages: ModelMessage[] = [
-      ...boundedHistory,
-      { role: "user", content: input.message },
-    ];
-
-    const result = await agent.generate({
-      messages,
-    });
-
-    // Safeguard: if the model turn did not search the catalog, retrieve relevant catalog
-    // candidates so the shopper always gets grounded product recommendations in their shortlist.
-    if (ctx.catalogLog.size === 0) {
-      const outcome = await catalog.search(input.message, { limit: 4, userId: input.userId });
-      ctx.catalogMetaRef.current = {
-        source: outcome.source,
-        fallback: "fallback" in outcome ? outcome.fallback?.reason : undefined,
+    const execution = await executeWithFailover(candidates, async (candidate) => {
+      // Fresh isolated context per provider attempt to prevent partial side effects
+      const intentRef = { current: { ...baseIntent } };
+      const ctx = createContext(catalog, intentRef, input.userId);
+      const allTools = createAgentTools(ctx);
+      const tools = {
+        searchProducts: allTools.searchProducts,
+        getProductDetails: allTools.getProductDetails,
+        compareProducts: allTools.compareProducts,
       };
-      for (const prod of outcome.products) {
-        ctx.catalogLog.set(prod.id, prod);
-      }
-    }
 
-    return assembleTurn({
-      content: result.text?.trim() || "I could not compose a reply this time — try rephrasing.",
-      intent: intentRef.current,
-      catalogLog: ctx.catalogLog,
-      recommendedIds: ctx.recommendedIdsRef.current,
-      comparisons: ctx.comparisonsRef.current,
-      catalogMeta: ctx.catalogMetaRef.current,
-      toolsUsed: ctx.toolsUsedRef.current,
-      query: input.message,
-      mode: "ai",
-      model: resolveModelId(),
+      const model = candidate.createModel();
+
+      const agent = new ToolLoopAgent({
+        model,
+        instructions: buildInstructions(intentRef.current),
+        tools,
+        stopWhen: isStepCount(MAX_STEPS),
+        maxOutputTokens: 1024,
+      });
+
+      const result = await agent.generate({
+        messages,
+      });
+
+      // Safeguard: if the model turn did not search the catalog, retrieve relevant catalog
+      // candidates so the shopper always gets grounded product recommendations in their shortlist.
+      if (ctx.catalogLog.size === 0) {
+        const outcome = await catalog.search(input.message, { limit: 4, userId: input.userId });
+        ctx.catalogMetaRef.current = {
+          source: outcome.source,
+          fallback: "fallback" in outcome ? outcome.fallback?.reason : undefined,
+        };
+        for (const prod of outcome.products) {
+          ctx.catalogLog.set(prod.id, prod);
+        }
+      }
+
+      return assembleTurn({
+        content: result.text?.trim() || "I could not compose a reply this time — try rephrasing.",
+        intent: intentRef.current,
+        catalogLog: ctx.catalogLog,
+        recommendedIds: ctx.recommendedIdsRef.current,
+        comparisons: ctx.comparisonsRef.current,
+        catalogMeta: ctx.catalogMetaRef.current,
+        toolsUsed: ctx.toolsUsedRef.current,
+        query: input.message,
+        mode: "ai",
+        model: candidate.modelId,
+      });
     });
+
+    return {
+      ...execution.result,
+      model: execution.model,
+    };
   } catch (error) {
     if (error instanceof AgentTurnError) throw error;
-    // Carry only sanitized fields: message and status. Never the request
-    // body or headers — those can contain the API key.
+    if (error instanceof AllProvidersFailedError) {
+      const isTimeout = error.attempts.some(
+        (a) =>
+          a.errorName === "TimeoutError" ||
+          a.errorName === "AbortError" ||
+          a.error?.toLowerCase().includes("timeout") ||
+          a.error?.toLowerCase().includes("abort"),
+      );
+      throw new AgentTurnError(
+        "ai_unavailable",
+        isTimeout ? "AI provider request timed out" : error.message,
+        error.lastStatus,
+        error.attempts,
+      );
+    }
     const status = (error as { statusCode?: unknown } | null)?.statusCode;
     const name = error instanceof Error ? error.name : "";
-    // Timeouts surface as TimeoutError/AbortError without an HTTP status;
-    // give them a stable, actionable message instead of a raw stack name.
     const timedOut = name === "TimeoutError" || name === "AbortError";
     throw new AgentTurnError(
       "ai_unavailable",
