@@ -59,6 +59,7 @@ interface DemoProductSeed {
   attributes: ProductAttribute[];
   glyph: ProductGlyph;
   tint: ProductTint;
+  image?: string;
 }
 
 const seeds: DemoProductSeed[] = [
@@ -84,6 +85,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "headphones",
     tint: "blue",
+    image:
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-bloom-earbuds",
@@ -107,6 +110,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "earbuds",
     tint: "red",
+    image:
+      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-pulse-speaker",
@@ -130,6 +135,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "speaker",
     tint: "green",
+    image:
+      "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-lithe-keyboard",
@@ -153,6 +160,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "keyboard",
     tint: "amber",
+    image:
+      "https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-marker-mouse",
@@ -176,6 +185,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "mouse",
     tint: "blue",
+    image:
+      "https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-verve-lamp",
@@ -198,6 +209,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "lamp",
     tint: "amber",
+    image:
+      "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-stride-watch",
@@ -221,6 +234,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "watch",
     tint: "green",
+    image:
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-arc-ring",
@@ -244,6 +259,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "sleep-ring",
     tint: "red",
+    image:
+      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-lumen-camera",
@@ -266,6 +283,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "camera",
     tint: "blue",
+    image:
+      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "demo-orbit-camera",
@@ -288,6 +307,8 @@ const seeds: DemoProductSeed[] = [
     ],
     glyph: "action-cam",
     tint: "green",
+    image:
+      "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=800&q=80",
   },
 ];
 
@@ -300,7 +321,7 @@ export const DEMO_PRODUCTS: Product[] = seeds.map((seed) => ({
   // Mock availability only exists so the type contract is exercised; the UI
   // does not display stock for demo records (nothing here is real inventory).
   availability: "in_stock" as const,
-  images: [],
+  images: seed.image ? [seed.image] : [],
   ratings: 0,
   reviews: 0,
   category: seed.category,

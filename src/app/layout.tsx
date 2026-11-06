@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { ShopProvider } from "@/lib/store";
 import { Navbar } from "@/components/shop/navbar";
@@ -15,20 +15,28 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/* Editorial display serif — hero and section headlines only. */
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument",
+  weight: "400",
+  style: ["normal", "italic"],
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: {
-    default: "ShopMate AI — Your Personal AI Shopping Assistant",
+    default: "ShopMate AI — Don't just shop. Make the right decision.",
     template: "%s — ShopMate AI",
   },
   description:
-    "Ask a plain-language question, get ranked picks with honest trade-offs, and build a cart you steer. AI shopping agent with product discovery, comparison and checkout-ready totals.",
+    "An AI shopping decision engine: describe what you need, get a verified shortlist and honest trade-offs from the live catalog, pin a comparison, and decide with confidence.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}
     >
       <body className="flex min-h-svh flex-col bg-background font-sans text-foreground">
         <ShopProvider>

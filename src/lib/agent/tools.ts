@@ -70,10 +70,11 @@ export interface AgentToolContext {
 const MAX_QUERY_LENGTH = 120;
 
 /** Model-facing descriptions are truncated to keep prompts small. */
-const MAX_DESCRIPTION_LENGTH = 400;
+const MAX_DESCRIPTION_LENGTH = 120;
 
-/** Normalizes a raw query: trim, collapse whitespace, lowercase, cap length. */
-export function normalizeQuery(raw: string): string {
+/** Normalizes a raw query: trim, collapse whitespace, lowercase, cap length. Safe on undefined. */
+export function normalizeQuery(raw?: string | null): string {
+  if (!raw || typeof raw !== "string") return "";
   return raw
     .trim()
     .replace(/\s+/g, " ")
@@ -81,25 +82,31 @@ export function normalizeQuery(raw: string): string {
     .slice(0, MAX_QUERY_LENGTH);
 }
 
-function truncate(value: string, max: number): string {
+export function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
   return `${value.slice(0, max - 1)}…`;
 }
 
 /** Compact, model-facing product record. Facts only — never invented here. */
 function compactProduct(product: Product) {
+  const cleanSpecs: Record<string, string | number | boolean> = {};
+  if (product.specs && typeof product.specs === "object") {
+    for (const [k, v] of Object.entries(product.specs).slice(0, 4)) {
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        cleanSpecs[k] = typeof v === "string" ? truncate(v, 40) : v;
+      }
+    }
+  }
   return {
     id: product.id,
-    name: product.name,
+    name: truncate(product.name, 80),
     price: product.price,
     currency: product.currency,
-    availability: product.availability,
-    ratings: product.ratings,
-    reviews: product.reviews,
     category: product.category,
     brand: product.brand,
-    specs: product.specs,
-    source: product.source,
+    ratings: product.ratings,
+    reviews: product.reviews,
+    specs: Object.keys(cleanSpecs).length > 0 ? cleanSpecs : undefined,
     description: truncate(product.description ?? "", MAX_DESCRIPTION_LENGTH),
   };
 }
@@ -137,7 +144,7 @@ export function createAgentTools(ctx: AgentToolContext) {
         "Search the product catalog. Returns only results relevant to the query " +
         "(irrelevant fuzzy matches are filtered out and counted). Use for product discovery.",
       inputSchema: z.object({
-        query: z.string().min(1).max(MAX_QUERY_LENGTH),
+        query: z.string().max(MAX_QUERY_LENGTH).optional().default(""),
         limit: z.number().int().min(1).max(10).default(6),
         filters: z
           .object({
@@ -151,7 +158,13 @@ export function createAgentTools(ctx: AgentToolContext) {
         if (searchesUsed >= ctx.budgets.searches) return BUDGET_EXHAUSTED;
         searchesUsed += 1;
 
-        const normalized = normalizeQuery(query);
+        const effectiveQuery = query?.trim()
+          ? query
+          : (ctx.intentRef.current.query || ctx.intentRef.current.category || ctx.intentRef.current.productCategory || "products");
+        const normalized = normalizeQuery(effectiveQuery);
+        if (!ctx.intentRef.current.query && normalized && normalized !== "products") {
+          ctx.intentRef.current.query = normalized;
+        }
         const outcome = await ctx.catalog.search(normalized, {
           // Default here, not only in the schema: direct callers (tests,
           // fallback path) bypass the model loop's validation step.

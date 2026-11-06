@@ -10,8 +10,9 @@
  */
 import { connection, NextResponse } from "next/server";
 import { getPayPalConfig } from "@/lib/paypal/auth";
+import { getOrIssueGuestSession } from "@/lib/payments/guest-session";
 
-export async function GET() {
+export async function GET(request?: Request) {
   // Configuration is read at request time so a deployment never serves a
   // Client ID captured during the build. `connection()` is the supported
   // opt-out under this app's cacheComponents configuration.
@@ -31,6 +32,17 @@ export async function GET() {
     );
   }
 
+  const headers: Record<string, string> = { "Cache-Control": "no-store" };
+  try {
+    const req = request ?? new Request("http://localhost/api/paypal/config");
+    const session = getOrIssueGuestSession(req);
+    if (session.setCookie) {
+      headers["Set-Cookie"] = session.setCookie;
+    }
+  } catch {
+    // Fail-open for the config probe if guest session secret is missing in dev
+  }
+
   // Explicit field allow-list: never spread `result.config` (it also holds
   // the client secret).
   return NextResponse.json(
@@ -41,6 +53,6 @@ export async function GET() {
       clientId: result.config.clientId,
       currency: "USD",
     },
-    { status: 200, headers: { "Cache-Control": "no-store" } },
+    { status: 200, headers },
   );
 }

@@ -12,10 +12,25 @@ import type { ShoppingIntent } from "./intent";
 /** Builds the per-request system prompt from the current intent. */
 export function buildInstructions(intent: ShoppingIntent): string {
   const known: string[] = [];
-  if (intent.category) known.push(`category: ${intent.category}`);
+  if (intent.productCategory || intent.category) {
+    known.push(`product category: ${intent.productCategory || intent.category}`);
+  }
   if (intent.query) known.push(`query: ${intent.query}`);
-  if (intent.budget) {
-    known.push(`budget: ${intent.budget.amount} ${intent.budget.currency}`);
+  if (intent.budgetMax !== undefined || intent.budget) {
+    const minStr = intent.budgetMin !== undefined ? `${intent.budgetMin} - ` : "";
+    const maxVal = intent.budgetMax ?? intent.budget?.amount;
+    const curr = intent.currency ?? intent.budget?.currency ?? "USD";
+    known.push(`budget: ${minStr}${maxVal} ${curr}`);
+  }
+  if (intent.intendedUse) known.push(`intended use: ${intent.intendedUse}`);
+  if (intent.requiredFeatures && intent.requiredFeatures.length > 0) {
+    known.push(`required features: ${intent.requiredFeatures.join(", ")}`);
+  }
+  if (intent.preferredFeatures && intent.preferredFeatures.length > 0) {
+    known.push(`preferred features: ${intent.preferredFeatures.join(", ")}`);
+  }
+  if (intent.excludedFeatures && intent.excludedFeatures.length > 0) {
+    known.push(`excluded features: ${intent.excludedFeatures.join(", ")}`);
   }
   if (intent.brands.length > 0) known.push(`brands: ${intent.brands.join(", ")}`);
   const specEntries = Object.entries(intent.requiredSpecs);
@@ -26,6 +41,9 @@ export function buildInstructions(intent: ShoppingIntent): string {
   }
   if (intent.priorities.length > 0) {
     known.push(`priorities: ${intent.priorities.join(", ")}`);
+  }
+  if (intent.constraints && intent.constraints.length > 0) {
+    known.push(`constraints: ${intent.constraints.join(", ")}`);
   }
 
   const lines = [
@@ -52,10 +70,13 @@ export function buildInstructions(intent: ShoppingIntent): string {
     "- Never promise a purchase, reservation, or delivery.",
     "",
     "## Tool policy",
+    "- When the user asks to find, recommend, or show products (or specifies requirements like headphones, laptops, etc.),",
+    "  call searchProducts to discover real catalog options.",
+    "- If the user specifies a budget (e.g. 'under $250'), extract it and do NOT ask for their budget again.",
+    "- Once searchProducts returns catalog data, compose your final reply directly explaining your recommendations.",
+    "  Do NOT make unnecessary repeated tool calls in the same turn.",
     "- Search only when the conversation needs product discovery. Reuse results",
     "  you already have instead of searching again for the same thing.",
-    "- After extracting shopping intent from the user's message, call recordIntent",
-    "  with what you learned and the product ids you intend to recommend.",
     "- Use getProductDetails when the shopper asks about a specific product.",
     "- Use compareProducts when the shopper asks to compare; at most once per turn.",
     "- If search results look irrelevant to the request, use refineSearch or ask a",

@@ -106,9 +106,7 @@ function specMatchScore(
   for (const [key, expected] of entries) {
     const actual = product.specs?.[key];
     if (actual === undefined) {
-      // Missing data is not a contradiction (the relevance gate handles
-      // those) but it cannot be credited as a match either.
-      total += 0.25;
+      // Missing data must remain unknown — it cannot be credited as a match.
       continue;
     }
     const actualTokens = tokenizeValue(actual);
@@ -233,9 +231,19 @@ export function rankProducts(
   products: Product[],
   criteria: RankingCriteria,
 ): RankedProduct[] {
+  // Deduplicate products by id to ensure ranking stability and prevent duplicate cards
+  const seenIds = new Set<string>();
+  const uniqueProducts: Product[] = [];
+  for (const product of products) {
+    if (!seenIds.has(product.id)) {
+      seenIds.add(product.id);
+      uniqueProducts.push(product);
+    }
+  }
+
   const weights = adaptWeights(DEFAULT_WEIGHTS, criteria.priorities ?? []);
 
-  const ranked = products.map((product) => {
+  const ranked = uniqueProducts.map((product) => {
     const relevance = scoreRelevance(product, {
       tokens: criteria.tokens,
       brands: criteria.brands,

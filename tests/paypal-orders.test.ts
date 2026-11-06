@@ -17,19 +17,40 @@ import { getCatalogProduct } from "@/lib/catalog/provider";
 import { CatalogError } from "@/lib/catalog/types";
 import type { Product } from "@/types";
 import { resetPayPalTokenCache } from "@/lib/paypal/auth";
-import { MAX_DEMO_TOTAL_USD, resetPayPalOrderCaches } from "@/lib/paypal/orders";
+import {
+  clearPayPalIdempotencyCacheForTests,
+  MAX_DEMO_TOTAL_USD,
+  resetPayPalOrderCaches,
+} from "@/lib/paypal/orders";
 
-const ENV_KEYS = ["PAYPAL_ENV", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"] as const;
+import {
+  createGuestSessionCookie,
+  GUEST_SESSION_COOKIE_NAME,
+} from "@/lib/payments/guest-session";
+import { resetPaymentRateLimiterForTests } from "@/lib/payments/rate-limit";
+
+const ENV_KEYS = [
+  "PAYPAL_ENV",
+  "PAYPAL_CLIENT_ID",
+  "PAYPAL_CLIENT_SECRET",
+  "SHOPMATE_GUEST_SESSION_SECRET",
+] as const;
 const FAKE_CREDS = {
   PAYPAL_ENV: "sandbox",
   PAYPAL_CLIENT_ID: "test-client-id",
   PAYPAL_CLIENT_SECRET: "test-client-secret",
+  SHOPMATE_GUEST_SESSION_SECRET:
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 };
 
 function setEnv(overrides: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>) {
   for (const key of ENV_KEYS) {
     if (overrides[key] === undefined) {
-      delete process.env[key];
+      if (key === "SHOPMATE_GUEST_SESSION_SECRET") {
+        process.env[key] = FAKE_CREDS[key];
+      } else {
+        delete process.env[key];
+      }
     } else {
       process.env[key] = overrides[key];
     }
@@ -117,18 +138,35 @@ function orderCalls(calls: FetchCall[]): FetchCall[] {
   return calls.filter((call) => call.url.includes("/v2/checkout/orders"));
 }
 
+let sessionCookie: string | undefined;
+
 async function postRoute(
   body: unknown,
   headers: Record<string, string> = {},
 ): Promise<{ status: number; body: Record<string, unknown>; headers: Headers }> {
   const { POST } = await import("@/app/api/paypal/orders/route");
+  const reqHeaders: Record<string, string> = {
+    "content-type": "application/json",
+    ...headers,
+  };
+  if (!reqHeaders.cookie) {
+    if (!sessionCookie) {
+      const guest = createGuestSessionCookie(undefined, { nowMs: Date.now() });
+      sessionCookie = `${GUEST_SESSION_COOKIE_NAME}=${guest.cookieValue}`;
+    }
+    reqHeaders.cookie = sessionCookie;
+  }
   const response = await POST(
     new Request("http://localhost/api/paypal/orders", {
       method: "POST",
-      headers: { "content-type": "application/json", ...headers },
+      headers: reqHeaders,
       body: JSON.stringify(body),
     }),
   );
+  const setCookie = response.headers.get("set-cookie");
+  if (setCookie) {
+    sessionCookie = setCookie.split(";")[0];
+  }
   return {
     status: response.status,
     body: (await response.json()) as Record<string, unknown>,
@@ -136,7 +174,64 @@ async function postRoute(
   };
 }
 
+/**
+ * Builds a request whose body arrives as a chunked stream. Passing a stream
+ * means the Request does not carry a Content-Length header, so the route must
+ * count real bytes to enforce its limit.
+ */
+function postStreamRequest(
+  payload: string,
+  headers: Record<string, string> = {},
+): Request {
+  const bytes = new TextEncoder().encode(payload);
+  const chunkSize = 1024;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        controller.enqueue(bytes.slice(offset, offset + chunkSize));
+      }
+      controller.close();
+    },
+  });
+
+  return new Request("http://localhost/api/paypal/orders", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: stream,
+    duplex: "half",
+  } as RequestInit);
+}
+
+async function postRawRoute(
+  request: Request,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { POST } = await import("@/app/api/paypal/orders/route");
+  const response = await POST(request);
+  return {
+    status: response.status,
+    body: (await response.json()) as Record<string, unknown>,
+  };
+}
+
+function uniqueOrderFetch(): FetchCall[] {
+  let created = 0;
+  return installPayPalFetch({
+    order: () => {
+      created += 1;
+      return jsonResponse(
+        {
+          ...ORDER_RESPONSE,
+          id: `ORDER${String(created).padStart(12, "0")}`,
+        },
+        201,
+      );
+    },
+  });
+}
+
 beforeEach(() => {
+  sessionCookie = undefined;
+  resetPaymentRateLimiterForTests();
   resetPayPalTokenCache();
   resetPayPalOrderCaches();
   setEnv(FAKE_CREDS);
@@ -148,6 +243,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   setEnv({});
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -502,5 +598,166 @@ describe("createPayPalOrder — idempotency", () => {
     expect(status).toBe(400);
     expect(body.error).toBe("invalid_request");
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("createPayPalOrder — concurrent idempotency", () => {
+  const KEY = "concurrent-key-12345678";
+
+  it("deduplicates concurrent requests with the same key and cart", async () => {
+    const calls = installPayPalFetch();
+    const body = { items: [{ productId: HEADPHONES.id, quantity: 1 }] };
+
+    const [first, second] = await Promise.all([
+      postRoute(body, { "idempotency-key": KEY }),
+      postRoute(body, { "idempotency-key": KEY }),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.orderId).toBe(first.body.orderId);
+    expect(second.body.captureToken).toBe(first.body.captureToken);
+    expect(second.body.referenceId).toBe(first.body.referenceId);
+    expect(orderCalls(calls)).toHaveLength(1);
+  });
+
+  it("rejects concurrent requests with the same key and a different cart", async () => {
+    const calls = installPayPalFetch();
+
+    const [first, second] = await Promise.all([
+      postRoute(
+        { items: [{ productId: HEADPHONES.id, quantity: 1 }] },
+        { "idempotency-key": KEY },
+      ),
+      postRoute(
+        { items: [{ productId: CABLE.id, quantity: 1 }] },
+        { "idempotency-key": KEY },
+      ),
+    ]);
+
+    const statuses = [first.status, second.status].sort((a, b) => a - b);
+    expect(statuses).toEqual([201, 409]);
+    const conflict = first.status === 409 ? first : second;
+    expect(conflict.body).toMatchObject({
+      success: false,
+      error: "idempotency_conflict",
+    });
+    expect(orderCalls(calls)).toHaveLength(1);
+  });
+
+  it("recovers the registered order when the idempotency cache is lost", async () => {
+    const calls = installPayPalFetch();
+    const body = { items: [{ productId: HEADPHONES.id, quantity: 1 }] };
+
+    const first = await postRoute(body, { "idempotency-key": KEY });
+    clearPayPalIdempotencyCacheForTests();
+
+    const replay = await postRoute(body, { "idempotency-key": KEY });
+
+    expect(replay.status).toBe(201);
+    expect(replay.body.orderId).toBe(first.body.orderId);
+    expect(replay.body.captureToken).toBe(first.body.captureToken);
+    expect(replay.body.referenceId).toBe(first.body.referenceId);
+    expect(orderCalls(calls)).toHaveLength(1);
+  });
+});
+
+describe("createPayPalOrder — expiry consistency", () => {
+  const KEY = "expiry-key-12345678";
+  const BODY = { items: [{ productId: HEADPHONES.id, quantity: 1 }] };
+
+  it("still replays a key after 11 minutes, matching the registry window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const calls = uniqueOrderFetch();
+
+    const first = await postRoute(BODY, { "idempotency-key": KEY });
+
+    vi.setSystemTime(new Date("2026-01-01T00:11:00.000Z"));
+    const second = await postRoute(BODY, { "idempotency-key": KEY });
+
+    expect(second.status).toBe(201);
+    expect(second.body.orderId).toBe(first.body.orderId);
+    expect(second.body.captureToken).toBe(first.body.captureToken);
+    expect(orderCalls(calls)).toHaveLength(1);
+  });
+
+  it("creates a fresh order after 31 minutes, when the registry entry expires", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const calls = uniqueOrderFetch();
+
+    const first = await postRoute(BODY, { "idempotency-key": KEY });
+
+    vi.setSystemTime(new Date("2026-01-01T00:31:00.000Z"));
+    const second = await postRoute(BODY, { "idempotency-key": KEY });
+
+    expect(second.status).toBe(201);
+    expect(second.body.orderId).not.toBe(first.body.orderId);
+    expect(orderCalls(calls)).toHaveLength(2);
+  });
+
+  it("rejects an expired-key request whose cart conflicts with a live registry record", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    uniqueOrderFetch();
+
+    await postRoute(BODY, { "idempotency-key": KEY });
+    clearPayPalIdempotencyCacheForTests();
+
+    // Same key, live registry entry, different cart: still a conflict.
+    const conflicting = await postRoute(
+      { items: [{ productId: CABLE.id, quantity: 1 }] },
+      { "idempotency-key": KEY },
+    );
+
+    expect(conflicting.status).toBe(409);
+    expect(conflicting.body.error).toBe("idempotency_conflict");
+  });
+});
+
+describe("createPayPalOrder — request body size", () => {
+  it("rejects an oversized chunked body with 413", async () => {
+    const calls = installPayPalFetch();
+    const payload = JSON.stringify({
+      items: [{ productId: HEADPHONES.id, quantity: 1 }],
+      padding: "x".repeat(33 * 1024),
+    });
+
+    const result = await postRawRoute(postStreamRequest(payload));
+
+    expect(result.status).toBe(413);
+    expect(result.body.success).toBe(false);
+    expect(result.body.error).toBe("invalid_request");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an oversized body whose Content-Length header lies", async () => {
+    const calls = installPayPalFetch();
+    const payload = JSON.stringify({
+      items: [{ productId: HEADPHONES.id, quantity: 1 }],
+      padding: "x".repeat(33 * 1024),
+    });
+
+    const result = await postRawRoute(
+      postStreamRequest(payload, { "content-length": "10" }),
+    );
+
+    expect(result.status).toBe(413);
+    expect(result.body.success).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("accepts a chunked body that stays under the limit", async () => {
+    const calls = installPayPalFetch();
+    const payload = JSON.stringify({
+      items: [{ productId: HEADPHONES.id, quantity: 1 }],
+    });
+
+    const result = await postRawRoute(postStreamRequest(payload));
+
+    expect(result.status).toBe(201);
+    expect(result.body.success).toBe(true);
+    expect(orderCalls(calls)).toHaveLength(1);
   });
 });

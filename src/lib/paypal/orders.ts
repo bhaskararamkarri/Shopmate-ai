@@ -1,10 +1,15 @@
 /**
- * ShopMate AI — PayPal Sandbox Create Order service (Phase 5.2).
+ * ShopMate AI — PayPal Sandbox Create Order service (Phase 6B).
  *
  * Server-side only. The browser sends cart lines (product id + quantity); the
  * server re-resolves every product through the catalog and computes the amount
  * itself. Client-supplied prices or totals are never read — the Zod schema
  * strips unknown fields before this module sees the request.
+ *
+ * Phase 6B replaces the process-local caches with a transactional payment
+ * store. The Idempotency-Key reservation, the PayPal order, and the
+ * authoritative amount now commit together, so a restart or a second instance
+ * can replay or deduplicate correctly.
  *
  * The order is an explicitly labelled ShopMate Sandbox demonstration
  * transaction. It does not pay a retailer and does not fulfil a Channel3
@@ -22,11 +27,18 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getCatalogProduct } from "@/lib/catalog/provider";
 import { CatalogError } from "@/lib/catalog/types";
-import { getPayPalAccessToken, getPayPalConfig, PayPalAuthError } from "./auth";
 import {
-  registerPendingPayPalOrder,
-  resetPayPalOrderRegistry,
-} from "./order-registry";
+  deriveCaptureToken,
+  hashCaptureToken,
+} from "@/lib/payments/capture-token";
+import { PaymentStoreError } from "@/lib/payments/errors";
+import { formatCents } from "@/lib/payments/money";
+import { getPaymentStore, resetPaymentStoreForTests } from "@/lib/payments/store";
+import type {
+  NewPaymentOrder,
+  StoredPaymentOrder,
+} from "@/lib/payments/types";
+import { getPayPalAccessToken, getPayPalConfig, PayPalAuthError } from "./auth";
 
 // Hard guard: a client bundle that somehow imports this module fails loudly
 // at module evaluation instead of shipping the secret-reading code.
@@ -50,6 +62,15 @@ const MAX_TOTAL_CENTS = MAX_DEMO_TOTAL_USD * 100;
 const MAX_LINES = 20;
 const MAX_QUANTITY = 99;
 
+/** Shared 30-minute demo capability window. */
+export const PAYPAL_ORDER_TTL_MS = 30 * 60_000;
+
+/** How long one create-order attempt may hold the idempotency lease. */
+const CREATE_PROCESSING_LEASE_MS = 20_000;
+
+/** Ambiguous PayPal failures become retryable after this short window. */
+const AMBIGUOUS_RETRY_MS = 15_000;
+
 /** Same id pattern the product detail route accepts (demo and live ids). */
 const PRODUCT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
@@ -61,10 +82,7 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{8,108}$/;
  * returns 17 characters). The capture route validates this again before it
  * ever looks up a pending order or calls PayPal.
  */
-const PAYPAL_ORDER_ID_PATTERN = /^[A-Za-z0-9]{10,36}$/;
-
-const IDEMPOTENCY_TTL_MS = 10 * 60_000;
-const MAX_IDEMPOTENCY_ENTRIES = 500;
+const PAYPAL_ORDER_ID_PATTERN = /^[A-Za-z0-9._-]{10,36}$/;
 
 export const PayPalOrderItemSchema = z.object({
   productId: z
@@ -91,6 +109,8 @@ export type PayPalOrderErrorCode =
   | "amount_too_large"
   | "item_not_found"
   | "idempotency_conflict"
+  | "idempotency_in_progress"
+  | "payment_store_unavailable"
   | "paypal_not_configured"
   | "paypal_unsupported_environment"
   | "paypal_auth_failed"
@@ -107,16 +127,20 @@ export class PayPalOrderError extends Error {
   readonly code: PayPalOrderErrorCode;
   /** Upstream HTTP status when the failure came from a PayPal response. */
   readonly upstreamStatus?: number;
+  /** Safe retry hint for an in-flight idempotent request. */
+  readonly retryAfterMs?: number;
 
   constructor(
     code: PayPalOrderErrorCode,
     message: string,
     upstreamStatus?: number,
+    retryAfterMs?: number,
   ) {
     super(message);
     this.name = "PayPalOrderError";
     this.code = code;
     this.upstreamStatus = upstreamStatus;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -132,7 +156,7 @@ export interface PayPalOrderResult {
   /**
    * Opaque, order-scoped capability proving this browser started this exact
    * server-created order. Required by the capture endpoint; it is not a PayPal
-   * credential and carries no secret.
+   * credential and carries no secret. The database stores only its hash.
    */
   captureToken: string;
   /** Present only when PayPal returned a safe https approval link. */
@@ -144,18 +168,32 @@ interface MergedLine {
   quantity: number;
 }
 
-interface IdempotencyEntry {
+interface InFlightCreate {
   fingerprint: string;
-  result: PayPalOrderResult;
-  expiresAt: number;
+  promise: Promise<PayPalOrderResult>;
 }
 
-const idempotencyCache = new Map<string, IdempotencyEntry>();
+/**
+ * Same-process coalescing only. The durable reservation in Postgres is the
+ * authority across instances; this map simply lets two concurrent browser
+ * requests share the first request's result instead of making the second wait
+ * for a retry window.
+ */
+const inFlightCreates = new Map<string, InFlightCreate>();
 
-/** Clears in-memory idempotency state — test isolation only. */
+/** Clears process-local coordination state — test isolation only. */
 export function resetPayPalOrderCaches(): void {
-  idempotencyCache.clear();
-  resetPayPalOrderRegistry();
+  inFlightCreates.clear();
+  resetPaymentStoreForTests();
+}
+
+/**
+ * Kept for compatibility with the Phase 5 tests. With a durable store there is
+ * no separate fast cache to clear: the store itself is the single source of
+ * truth, so a replay after this call still finds the original order.
+ */
+export function clearPayPalIdempotencyCacheForTests(): void {
+  // Intentionally empty.
 }
 
 /** True when the header value is a usable Idempotency-Key. */
@@ -189,10 +227,6 @@ function mergeLines(items: PayPalOrderRequest["items"]): MergedLine[] {
 /** Canonical payload fingerprint: order of lines does not matter. */
 function fingerprint(lines: MergedLine[]): string {
   return JSON.stringify(lines.map((line) => [line.productId, line.quantity]));
-}
-
-function formatCents(cents: number): string {
-  return (cents / 100).toFixed(2);
 }
 
 function malformedResponse(): PayPalOrderError {
@@ -365,50 +399,48 @@ async function requestPayPalOrder(params: {
   return { id, status, approveUrl };
 }
 
-/**
- * Creates a ShopMate Sandbox demonstration order.
- *
- * Throws `PayPalOrderError` for every expected failure; unexpected failures
- * intentionally propagate so the route can return a generic 500.
- */
-export async function createPayPalOrder(
-  request: PayPalOrderRequest,
-  options: { idempotencyKey?: string } = {},
-): Promise<PayPalOrderResult> {
-  if (request.items.length === 0) {
-    throw new PayPalOrderError("empty_cart", "Your cart is empty.");
-  }
+function idempotencyConflict(): PayPalOrderError {
+  return new PayPalOrderError(
+    "idempotency_conflict",
+    "This Idempotency-Key was already used with a different cart.",
+  );
+}
 
-  const lines = mergeLines(request.items);
-  const requestFingerprint = fingerprint(lines);
-  const idempotencyKey = options.idempotencyKey;
+function paymentStoreUnavailable(): PayPalOrderError {
+  return new PayPalOrderError(
+    "payment_store_unavailable",
+    "Payments are temporarily unavailable. No order was created. Try again shortly.",
+  );
+}
 
-  // Configuration is checked before any catalog or PayPal work. Missing
-  // credentials must never spend Channel3 credits or make an outbound call.
-  const config = getPayPalConfig();
-  if (!config.ok) {
+/** Rebuilds the exact safe response from the durable order record. */
+function resultFromStoredOrder(order: StoredPaymentOrder): PayPalOrderResult {
+  const captureToken = deriveCaptureToken(
+    order.paypalOrderId,
+    order.referenceId,
+  );
+  if (hashCaptureToken(captureToken) !== order.captureTokenHash) {
+    // Never hand the browser a capability the database would reject.
     throw new PayPalOrderError(
-      config.code,
-      config.code === "paypal_not_configured"
-        ? "PayPal credentials are not configured."
-        : "PAYPAL_ENV must be sandbox.",
+      "internal_error",
+      "Payment capability configuration changed. Start a new checkout.",
     );
   }
+  return {
+    success: true,
+    environment: "sandbox",
+    demo: true,
+    orderId: order.paypalOrderId,
+    status: order.providerOrderStatus ?? order.status,
+    amount: { currency: "USD", value: formatCents(order.amountCents) },
+    referenceId: order.referenceId,
+    captureToken,
+    ...(order.approvalUrl ? { approveUrl: order.approvalUrl } : {}),
+  };
+}
 
-  if (idempotencyKey) {
-    const cached = idempotencyCache.get(idempotencyKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      if (cached.fingerprint !== requestFingerprint) {
-        throw new PayPalOrderError(
-          "idempotency_conflict",
-          "This Idempotency-Key was already used with a different cart.",
-        );
-      }
-      return cached.result;
-    }
-    if (cached) idempotencyCache.delete(idempotencyKey);
-  }
-
+/** Reads the catalog and computes the authoritative total. */
+async function priceCart(lines: MergedLine[]): Promise<number> {
   let totalCents = 0;
 
   for (const line of lines) {
@@ -443,7 +475,10 @@ export async function createPayPalOrder(
       );
     }
 
-    const product = found.product;
+    const product =
+      "product" in found && (found as { product?: unknown }).product
+        ? (found as { product: { currency: string; price: number } }).product
+        : (found as unknown as { currency: string; price: number });
     if (product.currency.toUpperCase() !== "USD") {
       throw new PayPalOrderError(
         "unsupported_currency",
@@ -493,6 +528,25 @@ export async function createPayPalOrder(
     );
   }
 
+  return totalCents;
+}
+
+interface PreparedOrder {
+  newOrder: NewPaymentOrder;
+  captureToken: string;
+  createdAtMs: number;
+}
+
+/** Creates the upstream order and prepares the row to persist. */
+async function createUpstreamOrder(
+  lines: MergedLine[],
+  requestFingerprint: string,
+  idempotencyKey: string | undefined,
+  guestOwnerHash?: string | null,
+): Promise<PreparedOrder> {
+  const totalCents = await priceCart(lines);
+  const amountValue = formatCents(totalCents);
+
   let accessToken: string;
   try {
     accessToken = await getPayPalAccessToken();
@@ -500,10 +554,7 @@ export async function createPayPalOrder(
     mapAuthError(error);
   }
 
-  const amountValue = formatCents(totalCents);
   const referenceId = `shopmate-demo-${randomUUID()}`;
-  const captureToken = randomUUID();
-
   const order = await requestPayPalOrder({
     accessToken,
     amountValue,
@@ -511,40 +562,219 @@ export async function createPayPalOrder(
     idempotencyKey,
   });
 
-  const result: PayPalOrderResult = {
-    success: true,
-    environment: "sandbox",
-    demo: true,
-    orderId: order.id,
-    status: order.status,
-    amount: { currency: "USD", value: amountValue },
-    referenceId,
-    captureToken,
-    ...(order.approveUrl ? { approveUrl: order.approveUrl } : {}),
-  };
+  const captureToken = deriveCaptureToken(order.id, referenceId);
+  const createdAtMs = Date.now();
 
-  // The authoritative record capture will verify against. It is deliberately
-  // in-memory and demo-scoped; see order-registry.ts for the limitations.
-  registerPendingPayPalOrder({
-    orderId: order.id,
+  const newOrder: NewPaymentOrder = {
+    paypalOrderId: order.id,
     referenceId,
     amountCents: totalCents,
-    amountValue,
     currency: "USD",
-    captureToken,
-  });
+    status: "CREATED",
+    captureTokenHash: hashCaptureToken(captureToken),
+    cartFingerprint: requestFingerprint,
+    guestOwnerHash: guestOwnerHash ?? null,
+    idempotencyKey: idempotencyKey ?? null,
+    approvalUrl: order.approveUrl ?? null,
+    providerOrderStatus: order.status,
+    createdAtMs,
+    expiresAtMs: createdAtMs + PAYPAL_ORDER_TTL_MS,
+  };
 
-  if (idempotencyKey) {
-    if (idempotencyCache.size >= MAX_IDEMPOTENCY_ENTRIES) {
-      const oldest = idempotencyCache.keys().next().value;
-      if (oldest !== undefined) idempotencyCache.delete(oldest);
+  return { newOrder, captureToken, createdAtMs };
+}
+
+/**
+ * Failures that leave the PayPal outcome uncertain. The reservation stays
+ * PROCESSING with a retry window instead of becoming a definitive FAILED.
+ */
+const AMBIGUOUS_CREATE_CODES = new Set<PayPalOrderErrorCode>([
+  "paypal_timeout",
+  "paypal_unavailable",
+  "paypal_malformed_response",
+]);
+
+function classifyCreateFailure(error: unknown): {
+  code: string;
+  retryable: boolean;
+  retryAfterMs: number;
+} {
+  if (error instanceof PayPalOrderError) {
+    return {
+      code: error.code,
+      retryable: AMBIGUOUS_CREATE_CODES.has(error.code),
+      retryAfterMs: AMBIGUOUS_RETRY_MS,
+    };
+  }
+  if (error instanceof PaymentStoreError) {
+    // The order may already exist upstream; do not mark the reservation failed.
+    return {
+      code: error.code,
+      retryable: true,
+      retryAfterMs: AMBIGUOUS_RETRY_MS,
+    };
+  }
+  // An unexpected error after an outbound attempt is treated as ambiguous.
+  return {
+    code: "internal_error",
+    retryable: true,
+    retryAfterMs: AMBIGUOUS_RETRY_MS,
+  };
+}
+
+async function createWithoutKey(
+  lines: MergedLine[],
+  requestFingerprint: string,
+  guestOwnerHash?: string | null,
+): Promise<PayPalOrderResult> {
+  const prepared = await createUpstreamOrder(
+    lines,
+    requestFingerprint,
+    undefined,
+    guestOwnerHash,
+  );
+  try {
+    const stored = await getPaymentStore().createOrder(prepared.newOrder);
+    return resultFromStoredOrder(stored);
+  } catch (error) {
+    if (error instanceof PaymentStoreError) {
+      throw paymentStoreUnavailable();
     }
-    idempotencyCache.set(idempotencyKey, {
-      fingerprint: requestFingerprint,
-      result,
-      expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+    throw error;
+  }
+}
+
+async function createReservedOrder(
+  lines: MergedLine[],
+  requestFingerprint: string,
+  idempotencyKey: string,
+  reservationId: string,
+  guestOwnerHash?: string | null,
+): Promise<PayPalOrderResult> {
+  const store = getPaymentStore();
+  try {
+    const prepared = await createUpstreamOrder(
+      lines,
+      requestFingerprint,
+      idempotencyKey,
+      guestOwnerHash,
+    );
+    const completed = await store.completeCreateOrder({
+      reservationId,
+      order: prepared.newOrder,
+      nowMs: prepared.createdAtMs,
     });
+    if (completed.kind === "conflict") throw idempotencyConflict();
+    return resultFromStoredOrder(completed.order);
+  } catch (error) {
+    const failure = classifyCreateFailure(error);
+    try {
+      await store.failCreateOrder({
+        reservationId,
+        errorCode: failure.code,
+        retryable: failure.retryable,
+        retryAfterMs: failure.retryAfterMs,
+        nowMs: Date.now(),
+      });
+    } catch (storeError) {
+      // A store outage must not hide the original sanitized failure.
+      console.error(
+        "[paypal/orders] could not record create-order failure:",
+        storeError instanceof Error ? storeError.name : "unknown",
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Creates a ShopMate Sandbox demonstration order.
+ *
+ * Throws `PayPalOrderError` for every expected failure; unexpected failures
+ * intentionally propagate so the route can return a generic 500.
+ */
+export async function createPayPalOrder(
+  request: PayPalOrderRequest,
+  options: { idempotencyKey?: string; guestOwnerHash?: string | null } = {},
+): Promise<PayPalOrderResult> {
+  if (request.items.length === 0) {
+    throw new PayPalOrderError("empty_cart", "Your cart is empty.");
   }
 
-  return result;
+  const lines = mergeLines(request.items);
+  const requestFingerprint = fingerprint(lines);
+  const idempotencyKey = options.idempotencyKey;
+  const guestOwnerHash = options.guestOwnerHash ?? null;
+
+  // Configuration is checked before any catalog or PayPal work. Missing
+  // credentials must never spend Channel3 credits or make an outbound call.
+  const config = getPayPalConfig();
+  if (!config.ok) {
+    throw new PayPalOrderError(
+      config.code,
+      config.code === "paypal_not_configured"
+        ? "PayPal credentials are not configured."
+        : "PAYPAL_ENV must be sandbox.",
+    );
+  }
+
+  const store = getPaymentStore();
+  if (store.kind === "unavailable") throw paymentStoreUnavailable();
+
+  if (!idempotencyKey) {
+    return createWithoutKey(lines, requestFingerprint, guestOwnerHash);
+  }
+
+  // Coalesce identical in-process requests before touching the durable lease.
+  const inFlightKey = `${guestOwnerHash ?? "all"}:${idempotencyKey}`;
+  const running = inFlightCreates.get(inFlightKey);
+  if (running) {
+    if (running.fingerprint !== requestFingerprint) throw idempotencyConflict();
+    return running.promise;
+  }
+
+  const promise = (async () => {
+    const nowMs = Date.now();
+    const reservation = await store.reserveCreateOrder({
+      scope: "create_order",
+      idempotencyKey,
+      cartFingerprint: requestFingerprint,
+      guestOwnerHash,
+      nowMs,
+      expiresAtMs: nowMs + PAYPAL_ORDER_TTL_MS,
+      processingLeaseMs: CREATE_PROCESSING_LEASE_MS,
+    });
+
+    switch (reservation.kind) {
+      case "replay":
+        return resultFromStoredOrder(reservation.order);
+      case "conflict":
+        throw idempotencyConflict();
+      case "in_progress":
+        throw new PayPalOrderError(
+          "idempotency_in_progress",
+          "An identical order is already being created. Retry shortly.",
+          undefined,
+          reservation.retryAfterMs,
+        );
+      case "reserved":
+        return createReservedOrder(
+          lines,
+          requestFingerprint,
+          idempotencyKey,
+          reservation.reservation.id,
+          guestOwnerHash,
+        );
+    }
+  })().finally(() => {
+    if (inFlightCreates.get(inFlightKey)?.promise === promise) {
+      inFlightCreates.delete(inFlightKey);
+    }
+  });
+
+  inFlightCreates.set(inFlightKey, {
+    fingerprint: requestFingerprint,
+    promise,
+  });
+  return promise;
 }

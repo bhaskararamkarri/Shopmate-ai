@@ -6,7 +6,7 @@
  * the single source of truth for message/history validation.
  */
 import { z } from "zod";
-import type { Product } from "@/types";
+import type { Product, ProductRecommendationInsight } from "@/types";
 import { IntentSchema, type ShoppingIntent } from "./intent";
 
 /** Request and history bounds — deliberate, modest ceilings. */
@@ -62,6 +62,8 @@ export interface ChatApiSuccess {
   intent: ShoppingIntent;
   /** Ranked product recommendations (all facts from the catalog). */
   products: Product[];
+  /** Evidenced recommendation insights produced by the decision engine. */
+  recommendations?: ProductRecommendationInsight[];
   comparisons: ChatComparison[];
   /** Open clarifying questions, if any. */
   clarifications: string[];

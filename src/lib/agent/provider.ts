@@ -32,9 +32,9 @@ const DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/v1";
 const DEFAULT_GROQ_URL = "https://api.groq.com/openai/v1";
 
 /** Outbound Groq request timeout: env-overridable, clamped to a safe range. */
-const DEFAULT_GROQ_TIMEOUT_MS = 30_000;
-const MIN_GROQ_TIMEOUT_MS = 5_000;
-const MAX_GROQ_TIMEOUT_MS = 120_000;
+const DEFAULT_GROQ_TIMEOUT_MS = 15_000;
+const MIN_GROQ_TIMEOUT_MS = 3_000;
+const MAX_GROQ_TIMEOUT_MS = 60_000;
 
 function groqTimeoutMs(): number {
   const raw = process.env.SHOPMATE_AI_TIMEOUT_MS;

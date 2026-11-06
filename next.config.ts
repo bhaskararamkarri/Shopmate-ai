@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     // photography is invented anywhere. fastly.picsum.photos is included
     // because picsum.photos redirects image requests to its CDN host.
     remotePatterns: [
+      { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "picsum.photos" },
       { protocol: "https", hostname: "fastly.picsum.photos" },
     ],

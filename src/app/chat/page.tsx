@@ -10,22 +10,20 @@ export const metadata: Metadata = {
     "Chat with the ShopMate AI shopping agent: describe what you need and get ranked picks from the live Channel3 catalog with honest trade-offs.",
 };
 
-/**
- * The chat waits on searchParams (?q=...), which makes the scope dynamic
- * under `cacheComponents`; the static shell streams first.
- */
 async function ChatQueryScope({
   searchParams,
 }: {
-  searchParams: PageProps<"/chat">["searchParams"];
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const params = await searchParams;
-  const query = Array.isArray(params.q) ? params.q[0] : params.q;
+  const query = Array.isArray(params?.q) ? params.q[0] : params?.q;
 
   return <ChatClient initialQuery={query} />;
 }
 
-export default function ChatPage(props: PageProps<"/chat">) {
+export default function ChatPage(props: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   return (
     <Suspense fallback={<ChatFallback />}>
       <ChatQueryScope searchParams={props.searchParams} />

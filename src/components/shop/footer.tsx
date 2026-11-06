@@ -1,52 +1,50 @@
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 /** Release year stamped into the footer. */
 const COPYRIGHT_YEAR = 2026;
 
 const EXPLORE_LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/chat", label: "AI Shopping chat" },
-  { href: "/compare", label: "Product comparison" },
-  { href: "/cart", label: "Shopping cart" },
+  { href: "/", label: "Discover" },
+  { href: "/chat", label: "AI Shopping Workspace" },
+  { href: "/compare", label: "Product Comparison" },
+  { href: "/cart", label: "Shopping Cart & Checkout" },
 ] as const;
 
 export function Footer() {
-
   return (
-    <footer className="bg-secondary/40">
-      <div className="mx-auto w-full max-w-6xl px-4 py-12 md:px-6">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_0.8fr_0.8fr]">
-          <div className="space-y-3">
+    <footer className="border-t border-border bg-card/40">
+      <div className="mx-auto w-full max-w-6xl px-4 py-14 md:px-6">
+        <div className="grid gap-10 md:grid-cols-[1.5fr_0.8fr_0.8fr]">
+          <div className="space-y-3.5">
             <div className="flex items-center gap-2.5">
-              <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-                <ShoppingBag className="size-4" aria-hidden="true" />
+              <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/20">
+                <Sparkles className="size-4" aria-hidden="true" />
               </span>
               <span className="text-base font-semibold tracking-tight text-foreground">
-                ShopMate AI
+                ShopMate <span className="text-primary font-bold">AI</span>
               </span>
             </div>
-            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-              An AI shopping agent for considered purchases — ask in plain
-              language, compare the trade-offs side by side, and build a cart
-              you actually want.
+            <p className="max-w-sm text-sm font-medium text-foreground/90">
+              Shop smarter. Choose with confidence.
             </p>
-            <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">
-              Product search runs on the live Channel3 catalog, with demo data
-              clearly labeled wherever it is used. The AI chat model is live;
-              PayPal checkout runs in sandbox demo mode with a server-verified
-              capture. No real money moves and no goods are shipped.
+            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+              An intelligent shopping decision engine for modern consumers. Ask in plain
+              language, compare verified trade-offs side by side, and check out with complete confidence.
+            </p>
+            <p className="max-w-sm text-[12px] leading-relaxed text-muted-foreground/80">
+              Product discovery is powered by the live Channel3 catalog integration alongside clearly labeled demo records. PayPal payments run in Sandbox mode with server-verified order capture.
             </p>
           </div>
 
-          <nav aria-label="Explore" className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">Explore</h2>
-            <ul className="space-y-2">
+          <nav aria-label="Explore" className="space-y-3.5">
+            <h2 className="text-sm font-semibold text-foreground">Navigation</h2>
+            <ul className="space-y-2.5">
               {EXPLORE_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    className="text-xs text-muted-foreground transition-colors hover:text-primary"
                   >
                     {link.label}
                   </Link>
@@ -55,20 +53,21 @@ export function Footer() {
             </ul>
           </nav>
 
-          <div className="space-y-3">
-            <h2 className="text-sm font-semibold text-foreground">The stack</h2>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li>Next.js App Router</li>
-              <li>Tailwind CSS v4 + shadcn/ui</li>
-              <li>lucide icons</li>
-              <li>PayPal Sandbox checkout (server-verified capture)</li>
+          <div className="space-y-3.5">
+            <h2 className="text-sm font-semibold text-foreground">Core Architecture</h2>
+            <ul className="space-y-2 text-xs text-muted-foreground">
+              <li>Next.js App Router (Turbopack)</li>
+              <li>Tailwind CSS v4 &amp; shadcn/ui</li>
+              <li>Channel3 Catalog Integration</li>
+              <li>Vercel AI SDK Tool Calling</li>
+              <li>Server-Verified PayPal Sandbox</li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col gap-2 text-[13px] text-muted-foreground sm:flex-row sm:items-start sm:justify-between">
-          <p>© {COPYRIGHT_YEAR} ShopMate AI. Catalog by Channel3 · demo picks labeled.</p>
-          <p>Cart totals shown here are estimates; payment totals are validated server-side.</p>
+        <div className="mt-12 flex flex-col gap-3 border-t border-border pt-6 text-[12px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>© {COPYRIGHT_YEAR} ShopMate AI. All rights reserved.</p>
+          <p>Cart totals are verified server-side. Zero fabricated specifications or prices.</p>
         </div>
       </div>
     </footer>

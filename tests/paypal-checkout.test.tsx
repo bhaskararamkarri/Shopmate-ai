@@ -158,6 +158,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 describe("PayPalCheckout — rendering", () => {
@@ -447,6 +448,77 @@ describe("PayPalCheckout — buyer approval, capture and cancellation", () => {
     expect(captureCalls(calls)).toHaveLength(1);
   });
 
+  it("shows an unknown outcome without ever claiming no payment was taken", async () => {
+    installFetch({
+      capture: () =>
+        jsonResponse(
+          {
+            success: false,
+            error: "payment_status_unknown",
+            message:
+              "PayPal did not confirm whether this payment completed.",
+          },
+          409,
+        ),
+    });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+    await act(async () => {
+      await fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+    });
+
+    expect(
+      screen.getByText(/couldn't confirm whether PayPal completed this payment/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/do not retry/i)).toBeTruthy();
+    expect(screen.getByText(new RegExp(ORDER_ID))).toBeTruthy();
+    expect(screen.queryByText(/no payment was taken/i)).toBeNull();
+    expect(screen.queryByText(/sandbox payment captured/i)).toBeNull();
+    expect(screen.queryByText(/payment successful/i)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /try capture again/i }),
+    ).toBeNull();
+  });
+
+  it("keeps a pending outcome visible when onError or onCancel fires after capture", async () => {
+    installFetch({
+      capture: () =>
+        jsonResponse(
+          {
+            success: false,
+            error: "capture_pending",
+            status: "PENDING",
+            message: "PayPal is still processing the capture.",
+          },
+          202,
+        ),
+    });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+    await act(async () => {
+      await fake.configs[0]!.onApprove?.({ orderID: ORDER_ID });
+    });
+
+    await act(async () => {
+      fake.configs[0]!.onError?.(new Error("popup closed after capture"));
+      fake.configs[0]!.onCancel?.();
+    });
+
+    expect(screen.getByText(/capture pending/i)).toBeTruthy();
+    expect(screen.queryByText(/no payment was taken/i)).toBeNull();
+    expect(screen.queryByText(/checkout couldn't be completed/i)).toBeNull();
+  });
+
   it("handles buyer cancellation without claiming a payment", async () => {
     installFetch();
     const fake = installFakeSdk();
@@ -462,6 +534,7 @@ describe("PayPalCheckout — buyer approval, capture and cancellation", () => {
   });
 
   it("handles popup closure / SDK errors with a safe message", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     installFetch();
     const fake = installFakeSdk();
     vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
@@ -474,5 +547,48 @@ describe("PayPalCheckout — buyer approval, capture and cancellation", () => {
     expect(screen.getByText(/checkout couldn't be completed/i)).toBeTruthy();
     expect(screen.getByText(/no payment was taken/i)).toBeTruthy();
     expect(screen.queryByText(/popup closed/i)).toBeNull();
+    expect(consoleError).toHaveBeenCalled();
+  });
+
+  it("logs sanitized onError diagnostics and shows the PayPal reference", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    installFetch();
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+    await act(async () => {
+      await fake.configs[0]!.createOrder();
+    });
+
+    await act(async () => {
+      fake.configs[0]!.onError?.({
+        name: "PayPalError",
+        message:
+          "Authorization: Bearer secret-token " +
+          "https://www.sandbox.paypal.com/checkoutweb/genericError" +
+          "?code=PAYMENT_DENIED&debug_id=f719139b636c1 " +
+          "buyer@example.com",
+        details: [
+          { issue: "PAYMENT_DENIED", debug_id: "f719139b636c1" },
+        ],
+      });
+    });
+
+    expect(screen.getByText(/checkout couldn't be completed/i)).toBeTruthy();
+    expect(screen.getByText(/no payment was taken/i)).toBeTruthy();
+    expect(screen.getByText(/PAYMENT_DENIED/)).toBeTruthy();
+    expect(screen.getByText(/f719139b636c1/)).toBeTruthy();
+    expect(screen.queryByText(/secret-token/)).toBeNull();
+    expect(screen.queryByText(/sandbox\.paypal\.com/)).toBeNull();
+    expect(screen.queryByText(/buyer@example\.com/)).toBeNull();
+
+    const logged = JSON.stringify(consoleError.mock.calls);
+    expect(logged).toContain("f719139b636c1");
+    expect(logged).toContain("PAYMENT_DENIED");
+    expect(logged).toContain(ORDER_ID);
+    expect(logged).not.toContain("secret-token");
+    expect(logged).not.toContain("sandbox.paypal.com");
+    expect(logged).not.toContain("buyer@example.com");
   });
 });

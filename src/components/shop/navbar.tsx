@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, ShoppingBag, X } from "lucide-react";
+import { Menu, Sparkles, X } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { useShop } from "@/lib/store";
 
 const NAV_LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/chat", label: "AI Shopping" },
+  { href: "/", label: "Discover" },
+  { href: "/chat", label: "AI Workspace" },
   { href: "/compare", label: "Compare" },
 ] as const;
 
@@ -37,7 +37,7 @@ function CartLink({ onNavigate }: { onNavigate?: () => void }) {
     >
       Cart
       {cartCount > 0 ? (
-        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[13px] font-semibold leading-none tabular-nums text-primary-foreground">
+        <span className="ml-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[12px] font-semibold leading-none tabular-nums text-primary-foreground">
           {cartCount}
         </span>
       ) : null}
@@ -50,19 +50,21 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
         <Link
           href="/"
           onClick={() => setMobileOpen(false)}
           className="flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-            <ShoppingBag className="size-4" aria-hidden="true" />
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/20">
+            <Sparkles className="size-4" aria-hidden="true" />
           </span>
-          <span className="text-base font-semibold tracking-tight text-foreground">
-            ShopMate AI
-          </span>
+          <div className="flex flex-col">
+            <span className="text-base font-semibold tracking-tight text-foreground">
+              ShopMate <span className="text-primary font-bold">AI</span>
+            </span>
+          </div>
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
@@ -82,9 +84,9 @@ export function Navbar() {
           <CartLink />
         </nav>
 
-        <div className="flex items-center gap-2">
-          <Button asChild size="sm" className="hidden md:inline-flex">
-            <Link href="/chat">Ask ShopMate</Link>
+        <div className="flex items-center gap-2.5">
+          <Button asChild size="sm" className="hidden md:inline-flex shadow-sm shadow-primary/20">
+            <Link href="/chat">Open AI Workspace</Link>
           </Button>
           <Button
             type="button"
@@ -128,9 +130,9 @@ export function Navbar() {
               );
             })}
             <CartLink onNavigate={() => setMobileOpen(false)} />
-            <Button asChild size="default" className="mt-2 h-10">
+            <Button asChild size="default" className="mt-2 h-10 w-full shadow-sm shadow-primary/20">
               <Link href="/chat" onClick={() => setMobileOpen(false)}>
-                Ask ShopMate
+                Open AI Workspace
               </Link>
             </Button>
           </nav>

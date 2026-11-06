@@ -16,11 +16,13 @@ import { isStepCount, ToolLoopAgent, type ModelMessage } from "ai";
 import type { Product } from "@/types";
 import { filterRelevant, tokenize } from "./relevance";
 import { rankProducts } from "./ranking";
+import { generateRecommendations } from "./decision-engine";
 import { emptyIntent, type ShoppingIntent } from "./intent";
 import {
   DEFAULT_BUDGETS,
   createAgentTools,
   normalizeQuery,
+  truncate,
   type AgentCatalog,
   type AgentToolContext,
 } from "./tools";
@@ -32,8 +34,8 @@ import type { ChatApiSuccess, ChatComparison } from "./chat-contract";
 /** Max products attached to a reply — matches the UI's result list. */
 const MAX_PRODUCTS = 6;
 
-/** Tool-loop ceiling: enough for search → details → compare → recordIntent. */
-const MAX_STEPS = 8;
+/** Tool-loop ceiling: exactly 1 tool call + 1 answer step. */
+const MAX_STEPS = 2;
 
 /** Typed failure thrown when the model layer cannot complete a turn. */
 export class AgentTurnError extends Error {
@@ -86,7 +88,10 @@ export function assembleTurn(input: {
   // Allow-list: only ids the tools actually returned can be recommended.
   const recommended = input.recommendedIds.filter((id) => catalogLog.has(id));
 
-  const candidateIds = recommended.length > 0 ? recommended : [...catalogLog.keys()];
+  // Deduplicate candidate IDs to ensure ranking stability and no duplicate products
+  const candidateIds = Array.from(
+    new Set(recommended.length > 0 ? recommended : [...catalogLog.keys()]),
+  );
   const candidates = candidateIds
     .map((id) => catalogLog.get(id))
     .filter((product): product is Product => product !== undefined);
@@ -99,8 +104,10 @@ export function assembleTurn(input: {
     priorities: intent.priorities,
   });
 
-  const products = ranked.slice(0, MAX_PRODUCTS).map((r) => r.product);
+  const topRanked = ranked.slice(0, MAX_PRODUCTS);
+  const products = topRanked.map((r) => r.product);
   const productIds = products.map((p) => p.id);
+  const recommendations = generateRecommendations(topRanked, intent);
 
   const comparisons: ChatComparison[] = input.comparisons.map((group) => ({
     productIds: group.productIds.filter((id) => catalogLog.has(id)),
@@ -114,8 +121,12 @@ export function assembleTurn(input: {
   return {
     success: true,
     content: input.content,
-    intent,
+    intent: {
+      ...intent,
+      query: intent.query || input.query,
+    },
     products,
+    recommendations,
     comparisons,
     clarifications: intent.clarifications,
     productIds,
@@ -153,14 +164,42 @@ function createContext(
  */
 export function parseBudgetHint(
   message: string,
-): { amount: number; currency: string } | null {
+): { amount: number; currency: string; minAmount?: number } | null {
+  // Check range first: "between $100 and $250", "100 to 200"
+  const rangeMatch = message.match(
+    /(?:between|from)\s*([$₹€£]|rs\.?|inr|usd|eur|gbp)?\s*([\d,]+(?:\.\d+)?)\s*(?:and|to|-)\s*([$₹€£]|rs\.?|inr|usd|eur|gbp)?\s*([\d,]+(?:\.\d+)?)\s*(dollars?|euros?|pounds?|inr|usd|eur|gbp)?/i,
+  );
+  if (rangeMatch) {
+    const min = Number(rangeMatch[2].replace(/,/g, ""));
+    const max = Number(rangeMatch[4].replace(/,/g, ""));
+    const sym = (rangeMatch[1] || rangeMatch[3] || rangeMatch[5] || "").toLowerCase();
+    const currency = sym.includes("₹") || sym.includes("inr") || sym.includes("rs")
+      ? "INR"
+      : sym.includes("€") || sym.includes("eur")
+        ? "EUR"
+        : sym.includes("£") || sym.includes("gbp") || sym.includes("pound")
+          ? "GBP"
+          : "USD";
+    if (Number.isFinite(max) && max > 0) {
+      return { amount: max, minAmount: Number.isFinite(min) && min >= 0 ? min : undefined, currency };
+    }
+  }
+
   const match = message.match(
-    /(?:under|below|less\s+than|max(?:imum)?|up\s+to|budget(?:\s+of)?)\s*\$?\s*([\d,]+(?:\.\d+)?)/i,
+    /(?:under|below|less\s+than|max(?:imum)?|up\s+to|budget(?:\s+(?:is|of))?|spend(?:\s+up\s+to)?|have|for|around)\s*([$₹€£]|rs\.?|inr|usd|eur|gbp)?\s*([\d,]+(?:\.\d+)?)\s*([$₹€£]|rs\.?|inr|usd|eur|gbp|euros?|dollars?|bucks?|pounds?)?/i,
   );
   if (!match) return null;
-  const amount = Number(match[1].replace(/,/g, ""));
+  const sym = (match[1] || match[3] || "").toLowerCase();
+  const currency = sym.includes("₹") || sym.includes("inr") || sym.includes("rs")
+    ? "INR"
+    : sym.includes("€") || sym.includes("eur")
+      ? "EUR"
+      : sym.includes("£") || sym.includes("gbp") || sym.includes("pound")
+        ? "GBP"
+        : "USD";
+  const amount = Number(match[2].replace(/,/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) return null;
-  return { amount, currency: "USD" };
+  return { amount, currency };
 }
 
 /**
@@ -190,7 +229,14 @@ export async function runKeywordFallbackTurn(
     ? `AI assistance isn't configured right now, so I ran a keyword search for “${query}” on the ${outcome.source === "demo" ? "demo catalog" : "live catalog"}.${budgetHint ? ` Results are filtered to your ${budgetHint.amount} ${budgetHint.currency} budget.` : ""} These are straight keyword matches, ranked deterministically — not AI-picked recommendations:`
     : `AI assistance isn't configured right now, and a keyword search for “${query}” found no confident matches.${rejected.length > 0 ? ` ${rejected.length} result(s) were filtered out as irrelevant.` : ""}${suggestion ? ` ${suggestion}` : ""}`;
 
-  const intent: ShoppingIntent = { ...emptyIntent(), query, budget: budgetHint };
+  const intent: ShoppingIntent = {
+    ...emptyIntent(),
+    query,
+    budget: budgetHint ? { amount: budgetHint.amount, currency: budgetHint.currency } : null,
+    budgetMin: budgetHint?.minAmount,
+    budgetMax: budgetHint?.amount,
+    currency: budgetHint?.currency ?? "USD",
+  };
 
   return assembleTurn({
     content: intro,
@@ -226,7 +272,18 @@ export async function runAgentTurn(
     return runKeywordFallbackTurn(input, catalog);
   }
 
-  const intentRef = { current: input.intent ?? emptyIntent() };
+  const budgetHint = parseBudgetHint(input.message);
+  const baseIntent = input.intent ? { ...input.intent } : emptyIntent();
+  if (budgetHint) {
+    baseIntent.budget = { amount: budgetHint.amount, currency: budgetHint.currency };
+    baseIntent.budgetMax = budgetHint.amount;
+    if (budgetHint.minAmount !== undefined) baseIntent.budgetMin = budgetHint.minAmount;
+    baseIntent.currency = budgetHint.currency;
+  }
+  if (!baseIntent.query && input.message) {
+    baseIntent.query = normalizeQuery(input.message);
+  }
+  const intentRef = { current: baseIntent };
   const ctx = createContext(catalog, intentRef, input.userId);
 
   try {
@@ -235,10 +292,20 @@ export async function runAgentTurn(
       return runKeywordFallbackTurn(input, catalog);
     }
 
+    const allTools = createAgentTools(ctx);
+    // Expose only the actionable catalog tools to the agent loop.
+    // Excluding intermediate meta-tools (refineSearch, recordIntent) prevents
+    // wasteful multi-step looping and keeps prompt schemas small and fast.
+    const tools = {
+      searchProducts: allTools.searchProducts,
+      getProductDetails: allTools.getProductDetails,
+      compareProducts: allTools.compareProducts,
+    };
+
     const agent = new ToolLoopAgent({
       model,
       instructions: buildInstructions(intentRef.current),
-      tools: createAgentTools(ctx),
+      tools,
       stopWhen: isStepCount(MAX_STEPS),
       maxOutputTokens: 1024,
       providerOptions:
@@ -247,14 +314,34 @@ export async function runAgentTurn(
           : undefined,
     });
 
+    // Bound history to at most the last 2 turns (4 messages) to stay well within token limits.
+    // Truncate assistant content so verbose markdown doesn't blow past rate limits on multi-turn.
+    const boundedHistory: ModelMessage[] = input.history.slice(-4).map((h) => ({
+      role: h.role,
+      content: h.role === "assistant" ? truncate(h.content, 350) : truncate(h.content, 200),
+    }));
+
     const messages: ModelMessage[] = [
-      ...input.history.map(
-        (h): ModelMessage => ({ role: h.role, content: h.content }),
-      ),
+      ...boundedHistory,
       { role: "user", content: input.message },
     ];
 
-    const result = await agent.generate({ messages });
+    const result = await agent.generate({
+      messages,
+    });
+
+    // Safeguard: if the model turn did not search the catalog, retrieve relevant catalog
+    // candidates so the shopper always gets grounded product recommendations in their shortlist.
+    if (ctx.catalogLog.size === 0) {
+      const outcome = await catalog.search(input.message, { limit: 4, userId: input.userId });
+      ctx.catalogMetaRef.current = {
+        source: outcome.source,
+        fallback: "fallback" in outcome ? outcome.fallback?.reason : undefined,
+      };
+      for (const prod of outcome.products) {
+        ctx.catalogLog.set(prod.id, prod);
+      }
+    }
 
     return assembleTurn({
       content: result.text?.trim() || "I could not compose a reply this time — try rephrasing.",

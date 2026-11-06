@@ -6,7 +6,7 @@ import { Trash } from "lucide-react";
 import { cn } from "cn";
 import type { CartItem } from "@/types";
 import { Button } from "@/components/ui/button";
-import { PayPalCheckout } from "@/components/cart/paypal-checkout";
+import { PayPalCheckout, type PayPalCaptureSuccessEvent } from "@/components/cart/paypal-checkout";
 import { formatMoney } from "@/lib/format";
 
 /**
@@ -17,10 +17,12 @@ import { formatMoney } from "@/lib/format";
 export function CartSummary({
   items,
   onClearCart,
+  onCaptureSuccess,
   className,
 }: {
   items: CartItem[];
   onClearCart: () => void;
+  onCaptureSuccess?: (result: PayPalCaptureSuccessEvent) => void;
   className?: string;
 }) {
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -86,6 +88,7 @@ export function CartSummary({
           productId: item.product.id,
           quantity: item.quantity,
         }))}
+        onCaptureSuccess={onCaptureSuccess}
       />
 
       <div className="mt-4 flex items-center justify-between border-t border-border pt-4">

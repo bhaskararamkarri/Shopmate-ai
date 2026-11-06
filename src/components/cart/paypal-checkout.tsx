@@ -28,6 +28,10 @@ import {
   PayPalSdkError,
   type PayPalSdk,
 } from "@/lib/checkout/paypal-sdk";
+import {
+  reportPayPalCheckoutError,
+  type PayPalErrorDiagnostic,
+} from "@/lib/checkout/paypal-error";
 
 export interface PayPalCheckoutItem {
   productId: string;
@@ -44,6 +48,7 @@ type CheckoutPhase =
   | "captured"
   | "pending"
   | "capture_error"
+  | "unknown"
   | "cancelled"
   | "error";
 
@@ -59,6 +64,7 @@ interface OrderResponse {
   success: true;
   orderId: string;
   captureToken: string;
+  referenceId?: string;
 }
 
 interface CaptureSuccess {
@@ -151,24 +157,36 @@ function captureFailureMessage(code: string | null): string {
   switch (code) {
     case "capture_denied":
       return "PayPal denied the capture. No payment was taken.";
-    case "order_not_found":
-      return "This sandbox order is no longer available. No payment was taken. Start a new checkout.";
-    case "invalid_capture_token":
-      return "This checkout could not be verified. No payment was taken. Start a new checkout.";
     case "amount_mismatch":
     case "currency_mismatch":
     case "order_id_mismatch":
     case "purchase_unit_mismatch":
     case "capture_verification_failed":
       return "PayPal's capture did not match the server order. No payment is confirmed.";
-    case "paypal_timeout":
-      return "PayPal did not respond in time. The capture is unconfirmed; no payment is assumed.";
-    case "paypal_unavailable":
-      return "PayPal is temporarily unavailable. The capture is unconfirmed; no payment is assumed.";
+    case "order_not_found":
+      return "This sandbox checkout session is no longer active. Please start a new checkout.";
+    case "invalid_capture_token":
+      return "The payment authorization could not be validated. Please try checking out again.";
     case "capture_not_allowed":
-      return "PayPal did not accept this capture. No payment was taken. Start a new checkout.";
+      return "PayPal did not accept the capture. The order may need approval.";
+    case "payment_status_unknown":
+    case "paypal_timeout":
+    case "paypal_unavailable":
+      return "We couldn't confirm whether PayPal completed this payment.";
     default:
       return "PayPal did not confirm the capture. No payment is confirmed.";
+  }
+}
+
+/** Outcomes that must never be presented as a verified failure. */
+function isUnknownCaptureCode(code: string | null): boolean {
+  switch (code) {
+    case "payment_status_unknown":
+    case "paypal_timeout":
+    case "paypal_unavailable":
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -183,13 +201,28 @@ function createCheckoutKey(): string {
     .slice(2, 12)}`;
 }
 
-export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
+export interface PayPalCaptureSuccessEvent {
+  orderId: string;
+  captureId: string;
+  amount: { currency: string; value: string };
+}
+
+export function PayPalCheckout({
+  items,
+  onCaptureSuccess,
+}: {
+  items: PayPalCheckoutItem[];
+  onCaptureSuccess?: (result: PayPalCaptureSuccessEvent) => void;
+}) {
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [message, setMessage] = useState("");
   const [orderId, setOrderId] = useState<string>();
   const [capture, setCapture] = useState<CaptureState | null>(null);
   const [sdk, setSdk] = useState<PayPalSdk | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+  const [diagnostic, setDiagnostic] = useState<PayPalErrorDiagnostic | null>(
+    null,
+  );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const itemsRef = useRef(items);
@@ -198,8 +231,11 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
   const idempotencyKeyRef = useRef<string | null>(null);
   const captureTokenRef = useRef<string | null>(null);
   const createdOrderIdRef = useRef<string | null>(null);
+  const createdReferenceIdRef = useRef<string | null>(null);
   const captureInFlightRef = useRef(false);
   const capturedRef = useRef(false);
+  const captureAttemptedRef = useRef(false);
+  const captureApprovedOrderRef = useRef<(orderIdToCapture: string) => Promise<void>>(() => Promise.resolve());
 
   // Keep the latest ids/quantities available to the PayPal callbacks without
   // re-rendering the Buttons frame on every parent render.
@@ -222,10 +258,13 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
     setOrderId(undefined);
     setCapture(null);
     setMessage("");
+    setDiagnostic(null);
     submittingRef.current = false;
     approvedRef.current = false;
     captureInFlightRef.current = false;
     capturedRef.current = false;
+    captureAttemptedRef.current = false;
+    createdReferenceIdRef.current = null;
     idempotencyKeyRef.current = null;
     captureTokenRef.current = null;
     createdOrderIdRef.current = null;
@@ -238,6 +277,10 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
    */
   async function captureApprovedOrder(captureOrderId: string): Promise<void> {
     if (captureInFlightRef.current || capturedRef.current) return;
+
+    // From this point a capture may exist; late SDK cancel/error callbacks
+    // must not erase the outcome shown to the buyer.
+    captureAttemptedRef.current = true;
 
     const expectedOrderId = createdOrderIdRef.current;
     const captureToken = captureTokenRef.current;
@@ -258,17 +301,23 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
     captureInFlightRef.current = true;
     setOrderId(expectedOrderId);
     setMessage("");
+    setDiagnostic(null);
     setPhase("capturing");
 
     try {
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "X-ShopMate-Capture-Token": captureToken,
+      };
+      if (createdReferenceIdRef.current) {
+        headers["X-ShopMate-Reference-Id"] = createdReferenceIdRef.current;
+      }
       const response = await fetch(
         `/api/paypal/orders/${encodeURIComponent(expectedOrderId)}/capture`,
         {
           method: "POST",
-          headers: {
-            Accept: "application/json",
-            "X-ShopMate-Capture-Token": captureToken,
-          },
+          credentials: "same-origin",
+          headers,
         },
       );
       const payload: unknown = await response.json().catch(() => null);
@@ -277,6 +326,11 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         capturedRef.current = true;
         setCapture({ captureId: payload.captureId, amount: payload.amount });
         setPhase("captured");
+        onCaptureSuccess?.({
+          orderId: expectedOrderId,
+          captureId: payload.captureId,
+          amount: payload.amount,
+        });
         return;
       }
 
@@ -289,17 +343,29 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         return;
       }
 
+      if (isUnknownCaptureCode(code)) {
+        setPhase("unknown");
+        setMessage(captureFailureMessage(code));
+        return;
+      }
+
       setPhase("capture_error");
       setMessage(captureFailureMessage(code));
     } catch {
-      setPhase("capture_error");
+      // A transport failure after approval means the outcome is unknown. It
+      // must never be described as "no payment" or invite an immediate retry.
+      setPhase("unknown");
       setMessage(
-        "We couldn't confirm the payment capture. No payment is confirmed. Please try again.",
+        "We couldn't confirm whether PayPal completed this payment.",
       );
     } finally {
       captureInFlightRef.current = false;
     }
   }
+
+  useEffect(() => {
+    captureApprovedOrderRef.current = captureApprovedOrder;
+  });
 
   function handleCaptureRetry(): void {
     if (orderId) void captureApprovedOrder(orderId);
@@ -315,6 +381,7 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
       try {
         const response = await fetch("/api/paypal/config", {
           method: "GET",
+          credentials: "same-origin",
           headers: { Accept: "application/json" },
           cache: "no-store",
           signal: controller.signal,
@@ -369,13 +436,16 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         }
 
         submittingRef.current = true;
+        captureAttemptedRef.current = false;
         setPhase("creating");
         setMessage("");
         setCapture(null);
+        setDiagnostic(null);
 
         try {
           const response = await fetch("/api/paypal/orders", {
             method: "POST",
+            credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
               "Idempotency-Key": currentIdempotencyKey(),
@@ -396,6 +466,12 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
           const nextOrderId = payload.orderId.trim();
           createdOrderIdRef.current = nextOrderId;
           captureTokenRef.current = payload.captureToken.trim();
+          if (
+            typeof payload.referenceId === "string" &&
+            payload.referenceId.trim().length > 0
+          ) {
+            createdReferenceIdRef.current = payload.referenceId.trim();
+          }
           setOrderId(nextOrderId);
           setPhase("approval");
           return nextOrderId;
@@ -403,6 +479,7 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
           submittingRef.current = false;
           captureTokenRef.current = null;
           createdOrderIdRef.current = null;
+          createdReferenceIdRef.current = null;
           setPhase("error");
           setMessage(
             "We couldn't create the PayPal order. No payment was taken. Please try again.",
@@ -412,22 +489,42 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
             : new Error("PayPal order creation failed.");
         }
       },
-      onApprove: (data) => captureApprovedOrder(data.orderID),
+      onApprove: (data) => captureApprovedOrderRef.current(data.orderID),
       onCancel: () => {
-        if (captureInFlightRef.current || capturedRef.current) return;
+        if (
+          captureInFlightRef.current ||
+          capturedRef.current ||
+          captureAttemptedRef.current
+        ) {
+          return;
+        }
         submittingRef.current = false;
         approvedRef.current = false;
         captureTokenRef.current = null;
         createdOrderIdRef.current = null;
+        createdReferenceIdRef.current = null;
         idempotencyKeyRef.current = createCheckoutKey();
+        setDiagnostic(null);
         setPhase("cancelled");
       },
-      onError: () => {
-        if (captureInFlightRef.current || capturedRef.current) return;
+      onError: (error) => {
+        if (
+          captureInFlightRef.current ||
+          capturedRef.current ||
+          captureAttemptedRef.current
+        ) {
+          return;
+        }
+        // Capture the order id before clearing it so the sanitized diagnostic
+        // can be correlated with the failed PayPal order.
+        setDiagnostic(
+          reportPayPalCheckoutError(error, createdOrderIdRef.current),
+        );
         submittingRef.current = false;
         approvedRef.current = false;
         captureTokenRef.current = null;
         createdOrderIdRef.current = null;
+        createdReferenceIdRef.current = null;
         idempotencyKeyRef.current = createCheckoutKey();
         setPhase("error");
         setMessage(
@@ -470,7 +567,8 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
     phase === "capturing" ||
     phase === "captured" ||
     phase === "pending" ||
-    phase === "capture_error";
+    phase === "capture_error" ||
+    phase === "unknown";
 
   const capturedAmount = capture
     ? formatMoney(Number(capture.amount.value), capture.amount.currency)
@@ -485,13 +583,17 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         <h3 className="text-sm font-semibold tracking-tight text-foreground">
           Pay with PayPal
         </h3>
-        <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          Sandbox
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
+          <span className="size-1.5 rounded-full bg-sky-500 animate-pulse" />
+          PAYPAL SANDBOX
         </span>
       </div>
 
-      <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-[12px] leading-relaxed text-amber-950 dark:text-amber-100">
-        <p className="font-semibold">ShopMate Sandbox demonstration</p>
+      <div className="mt-3 rounded-lg border border-border/70 bg-muted/40 p-3 text-[12px] leading-relaxed text-muted-foreground">
+        <p className="flex items-center gap-1.5 font-medium text-foreground">
+          <ShieldCheck aria-hidden="true" className="size-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+          <span>ShopMate Sandbox demonstration</span>
+        </p>
         <p className="mt-1">
           This is not a real retailer purchase. No goods are shipped. You are
           approving a test transaction only.
@@ -610,6 +712,38 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
           </div>
         )}
 
+        {phase === "unknown" && (
+          <div
+            role="alert"
+            className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-[12px] leading-relaxed text-amber-950 dark:text-amber-100"
+          >
+            <p className="flex items-center gap-1.5 font-semibold">
+              <AlertTriangle aria-hidden="true" className="size-4" />
+              Payment outcome unknown
+            </p>
+            <p className="mt-1">
+              We couldn&apos;t confirm whether PayPal completed this payment.
+              Do not retry — the payment status is still being checked.
+            </p>
+            {orderId && (
+              <p className="mt-1">
+                Order reference:{" "}
+                <code className="font-mono">{orderId}</code>
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 gap-1.5"
+              onClick={handleCaptureRetry}
+            >
+              <RefreshCw aria-hidden="true" />
+              Check payment status
+            </Button>
+          </div>
+        )}
+
         {phase === "capture_error" && (
           <div
             role="alert"
@@ -642,9 +776,24 @@ export function PayPalCheckout({ items }: { items: PayPalCheckoutItem[] }) {
         )}
 
         {phase === "error" && (
-          <p role="alert" className="text-[13px] text-destructive">
-            {message}
-          </p>
+          <div role="alert" className="text-[13px] text-destructive">
+            <p>{message}</p>
+            {diagnostic &&
+              (diagnostic.code ||
+                diagnostic.debugId ||
+                diagnostic.correlationId) && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  PayPal reference:
+                  {diagnostic.code ? ` ${diagnostic.code}` : ""}
+                  {diagnostic.debugId
+                    ? ` · Debug ID: ${diagnostic.debugId}`
+                    : ""}
+                  {diagnostic.correlationId
+                    ? ` · Correlation ID: ${diagnostic.correlationId}`
+                    : ""}
+                </p>
+              )}
+          </div>
         )}
       </div>
     </section>

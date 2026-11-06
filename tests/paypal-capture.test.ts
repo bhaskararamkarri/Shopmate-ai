@@ -18,11 +18,25 @@ import type { Product } from "@/types";
 import { resetPayPalTokenCache } from "@/lib/paypal/auth";
 import { resetPayPalOrderCaches } from "@/lib/paypal/orders";
 
-const ENV_KEYS = ["PAYPAL_ENV", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET"] as const;
+import { resetPaymentRateLimiterForTests } from "@/lib/payments/rate-limit";
+import { resetPaymentStoreForTests } from "@/lib/payments/store";
+import {
+  createGuestSessionCookie,
+  GUEST_SESSION_COOKIE_NAME,
+} from "@/lib/payments/guest-session";
+
+const ENV_KEYS = [
+  "PAYPAL_ENV",
+  "PAYPAL_CLIENT_ID",
+  "PAYPAL_CLIENT_SECRET",
+  "SHOPMATE_GUEST_SESSION_SECRET",
+] as const;
 const FAKE_CREDS = {
   PAYPAL_ENV: "sandbox",
   PAYPAL_CLIENT_ID: "test-client-id",
   PAYPAL_CLIENT_SECRET: "test-client-secret",
+  SHOPMATE_GUEST_SESSION_SECRET:
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 };
 
 const ORDER_ID = "5O190127TN364715T";
@@ -58,7 +72,11 @@ function setEnv(
 ) {
   for (const key of ENV_KEYS) {
     if (overrides[key] === undefined) {
-      delete process.env[key];
+      if (key === "SHOPMATE_GUEST_SESSION_SECRET") {
+        process.env[key] = FAKE_CREDS[key];
+      } else {
+        delete process.env[key];
+      }
     } else {
       process.env[key] = overrides[key];
     }
@@ -82,6 +100,7 @@ interface Seed {
   captureToken: string;
   referenceId: string;
   amountValue: string;
+  cookie?: string;
 }
 
 let seeded: Seed | null = null;
@@ -119,9 +138,46 @@ function captureBody(
   };
 }
 
+function orderStatusBody(
+  overrides: {
+    orderId?: string;
+    orderStatus?: string;
+    referenceId?: string;
+    captureStatus?: string;
+    currency?: string;
+    value?: string;
+    captures?: unknown[];
+  } = {},
+): Record<string, unknown> {
+  if (!seeded) throw new Error("seed the order first");
+  const capture = {
+    id: CAPTURE_ID,
+    status: overrides.captureStatus ?? "COMPLETED",
+    amount: {
+      currency_code: overrides.currency ?? "USD",
+      value: overrides.value ?? seeded.amountValue,
+    },
+  };
+  return {
+    id: overrides.orderId ?? seeded.orderId,
+    status: overrides.orderStatus ?? "COMPLETED",
+    purchase_units: [
+      {
+        reference_id: overrides.referenceId ?? seeded.referenceId,
+        amount: {
+          currency_code: overrides.currency ?? "USD",
+          value: overrides.value ?? seeded.amountValue,
+        },
+        payments: { captures: overrides.captures ?? [capture] },
+      },
+    ],
+  };
+}
+
 function installFetch(handlers?: {
   token?: () => Response | Promise<Response>;
   order?: () => Response | Promise<Response>;
+  status?: () => Response | Promise<Response>;
   capture?: () => Response | Promise<Response>;
 }): FetchCall[] {
   calls = [];
@@ -142,6 +198,10 @@ function installFetch(handlers?: {
         : jsonResponse(captureBody());
     }
     if (url.includes("/v2/checkout/orders")) {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") {
+        return handlers?.status ? handlers.status() : jsonResponse({});
+      }
       return handlers?.order
         ? handlers.order()
         : jsonResponse(ORDER_RESPONSE, 201);
@@ -154,6 +214,15 @@ function installFetch(handlers?: {
 
 function captureCalls(): FetchCall[] {
   return calls.filter((call) => call.url.includes("/capture"));
+}
+
+function statusCalls(): FetchCall[] {
+  return calls.filter(
+    (call) =>
+      call.url.includes("/v2/checkout/orders") &&
+      !call.url.includes("/capture") &&
+      (call.init?.method ?? "GET").toUpperCase() === "GET",
+  );
 }
 
 async function seedOrder(): Promise<Seed> {
@@ -182,6 +251,7 @@ async function seedOrder(): Promise<Seed> {
     captureToken: body.captureToken,
     referenceId: body.referenceId,
     amountValue: body.amount.value,
+    cookie: response.headers.get("set-cookie")?.split(";")[0],
   };
   return seeded;
 }
@@ -204,6 +274,11 @@ async function callCapture(
     "content-type": "application/json",
     ...options.headers,
   };
+  if (headers.cookie === undefined) {
+    headers.cookie =
+      seeded?.cookie ??
+      `${GUEST_SESSION_COOKIE_NAME}=${createGuestSessionCookie().cookieValue}`;
+  }
   if (token !== undefined) headers["x-shopmate-capture-token"] = token;
 
   const response = await POST(
@@ -227,6 +302,7 @@ async function callCapture(
 }
 
 beforeEach(() => {
+  resetPaymentRateLimiterForTests();
   resetPayPalTokenCache();
   resetPayPalOrderCaches();
   seeded = null;
@@ -323,8 +399,11 @@ describe("POST /api/paypal/orders/[orderId]/capture — success", () => {
 });
 
 describe("POST /api/paypal/orders/[orderId]/capture — verification", () => {
-  it("rejects an amount mismatch", async () => {
-    installFetch({ capture: () => jsonResponse(captureBody({ value: "0.01" })) });
+  it("rejects an amount mismatch confirmed by reconciliation", async () => {
+    installFetch({
+      capture: () => jsonResponse(captureBody({ value: "0.01" })),
+      status: () => jsonResponse(orderStatusBody({ value: "0.01" })),
+    });
     const order = await seedOrder();
 
     const result = await callCapture(order.orderId, order.captureToken);
@@ -334,11 +413,14 @@ describe("POST /api/paypal/orders/[orderId]/capture — verification", () => {
       success: false,
       error: "amount_mismatch",
     });
+    expect(captureCalls()).toHaveLength(1);
+    expect(statusCalls()).toHaveLength(1);
   });
 
-  it("rejects a currency mismatch", async () => {
+  it("rejects a currency mismatch confirmed by reconciliation", async () => {
     installFetch({
       capture: () => jsonResponse(captureBody({ currency: "EUR" })),
+      status: () => jsonResponse(orderStatusBody({ currency: "EUR" })),
     });
     const order = await seedOrder();
 
@@ -351,10 +433,12 @@ describe("POST /api/paypal/orders/[orderId]/capture — verification", () => {
     });
   });
 
-  it("rejects a PayPal order id mismatch", async () => {
+  it("rejects a PayPal order id mismatch confirmed by reconciliation", async () => {
     installFetch({
       capture: () =>
         jsonResponse(captureBody({ orderId: "DIFFERENTORDER123456" })),
+      status: () =>
+        jsonResponse(orderStatusBody({ orderId: "DIFFERENTORDER123456" })),
     });
     const order = await seedOrder();
 
@@ -367,10 +451,12 @@ describe("POST /api/paypal/orders/[orderId]/capture — verification", () => {
     });
   });
 
-  it("rejects a purchase-unit reference mismatch", async () => {
+  it("rejects a purchase-unit reference mismatch confirmed by reconciliation", async () => {
     installFetch({
       capture: () =>
         jsonResponse(captureBody({ referenceId: "shopmate-demo-other" })),
+      status: () =>
+        jsonResponse(orderStatusBody({ referenceId: "shopmate-demo-other" })),
     });
     const order = await seedOrder();
 
@@ -383,23 +469,29 @@ describe("POST /api/paypal/orders/[orderId]/capture — verification", () => {
     });
   });
 
-  it("does not report success for an APPROVED-only order", async () => {
+  it("reports a pending capture for an APPROVED-only order after reconciliation", async () => {
     installFetch({
       capture: () =>
         jsonResponse(
           captureBody({ orderStatus: "APPROVED", captures: [] }),
+        ),
+      status: () =>
+        jsonResponse(
+          orderStatusBody({ orderStatus: "APPROVED", captures: [] }),
         ),
     });
     const order = await seedOrder();
 
     const result = await callCapture(order.orderId, order.captureToken);
 
-    expect(result.status).toBe(409);
+    expect(result.status).toBe(202);
     expect(result.body).toMatchObject({
       success: false,
-      error: "capture_not_allowed",
+      error: "capture_pending",
+      status: "APPROVED",
     });
-    expect(JSON.stringify(result.body)).not.toContain("COMPLETED");
+    expect(JSON.stringify(result.body)).not.toContain('"success":true');
+    expect(captureCalls()).toHaveLength(1);
   });
 });
 
@@ -569,7 +661,7 @@ describe("POST /api/paypal/orders/[orderId]/capture — upstream failures", () =
     });
   });
 
-  it("maps a PayPal 5xx to paypal_unavailable without leaking details", async () => {
+  it("returns payment_status_unknown when a 5xx cannot be reconciled", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     installFetch({
       capture: () =>
@@ -577,42 +669,27 @@ describe("POST /api/paypal/orders/[orderId]/capture — upstream failures", () =
           { name: "INTERNAL_SERVER_ERROR", details: "raw upstream detail" },
           500,
         ),
+      status: () => jsonResponse({ name: "INTERNAL_SERVER_ERROR" }, 500),
     });
     const order = await seedOrder();
 
     const result = await callCapture(order.orderId, order.captureToken);
 
-    expect(result.status).toBe(502);
+    expect(result.status).toBe(409);
     expect(result.body).toMatchObject({
       success: false,
-      error: "paypal_unavailable",
+      error: "payment_status_unknown",
     });
+    expect(captureCalls()).toHaveLength(1);
+    expect(statusCalls()).toHaveLength(1);
     const logged = errorSpy.mock.calls.flat().join(" ");
+    expect(logged).toContain("payment_status_unknown");
     expect(logged).not.toContain("raw upstream detail");
     expect(logged).not.toContain(FAKE_CREDS.PAYPAL_CLIENT_SECRET);
     expect(logged).not.toContain("test-access-token");
   });
 
-  it("maps a PayPal timeout to 504", async () => {
-    installFetch({
-      capture: () => {
-        const timeout = new Error("The operation was aborted due to timeout");
-        timeout.name = "TimeoutError";
-        throw timeout;
-      },
-    });
-    const order = await seedOrder();
-
-    const result = await callCapture(order.orderId, order.captureToken);
-
-    expect(result.status).toBe(504);
-    expect(result.body).toMatchObject({
-      success: false,
-      error: "paypal_timeout",
-    });
-  });
-
-  it("rejects a malformed capture response safely", async () => {
+  it("reconciles a malformed capture response safely", async () => {
     installFetch({
       capture: () => jsonResponse({ id: ORDER_ID, status: "COMPLETED" }),
     });
@@ -620,10 +697,220 @@ describe("POST /api/paypal/orders/[orderId]/capture — upstream failures", () =
 
     const result = await callCapture(order.orderId, order.captureToken);
 
-    expect([409, 502]).toContain(result.status);
-    expect(result.body.success).toBe(false);
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({
+      success: false,
+      error: "payment_status_unknown",
+    });
     expect(String(result.body.message).toLowerCase()).not.toContain(
       "raw upstream",
     );
+  });
+});
+
+describe("POST /api/paypal/orders/[orderId]/capture — reconciliation", () => {
+  function timeoutError(): Error {
+    const timeout = new Error("The operation was aborted due to timeout");
+    timeout.name = "TimeoutError";
+    return timeout;
+  }
+
+  it("discovers a COMPLETED capture after the initial capture response times out", async () => {
+    installFetch({
+      capture: () => {
+        throw timeoutError();
+      },
+      status: () => jsonResponse(orderStatusBody()),
+    });
+    const order = await seedOrder();
+
+    const result = await callCapture(order.orderId, order.captureToken);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      success: true,
+      orderId: ORDER_ID,
+      captureId: CAPTURE_ID,
+      status: "COMPLETED",
+      amount: { currency: "USD", value: "199.99" },
+      alreadyCaptured: true,
+    });
+    expect(captureCalls()).toHaveLength(1);
+    expect(statusCalls()).toHaveLength(1);
+  });
+
+  it("checks status again without issuing a second capture", async () => {
+    let statusCheck = 0;
+    installFetch({
+      capture: () => {
+        throw timeoutError();
+      },
+      status: () => {
+        statusCheck += 1;
+        return jsonResponse(
+          statusCheck === 1
+            ? orderStatusBody({
+                orderStatus: "PENDING",
+                captureStatus: "PENDING",
+              })
+            : orderStatusBody(),
+        );
+      },
+    });
+    const order = await seedOrder();
+
+    const first = await callCapture(order.orderId, order.captureToken);
+    expect(first.status).toBe(202);
+    expect(first.body).toMatchObject({
+      success: false,
+      error: "capture_pending",
+      status: "PENDING",
+    });
+
+    const second = await callCapture(order.orderId, order.captureToken);
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({
+      success: true,
+      captureId: CAPTURE_ID,
+      alreadyCaptured: true,
+    });
+    expect(captureCalls()).toHaveLength(1);
+    expect(statusCalls()).toHaveLength(2);
+  });
+
+  it("returns payment_status_unknown when reconciliation cannot establish the outcome", async () => {
+    installFetch({
+      capture: () => {
+        throw timeoutError();
+      },
+      status: () => jsonResponse({}, 503),
+    });
+    const order = await seedOrder();
+
+    const result = await callCapture(order.orderId, order.captureToken);
+
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({
+      success: false,
+      error: "payment_status_unknown",
+    });
+    expect(captureCalls()).toHaveLength(1);
+    expect(statusCalls()).toHaveLength(1);
+  });
+
+  it("returns a verified pending state when reconciliation finds no capture", async () => {
+    installFetch({
+      capture: () => {
+        throw timeoutError();
+      },
+      status: () =>
+        jsonResponse(
+          orderStatusBody({ orderStatus: "APPROVED", captures: [] }),
+        ),
+    });
+    const order = await seedOrder();
+
+    const result = await callCapture(order.orderId, order.captureToken);
+
+    expect(result.status).toBe(202);
+    expect(result.body).toMatchObject({
+      success: false,
+      error: "capture_pending",
+      status: "APPROVED",
+    });
+    expect(captureCalls()).toHaveLength(1);
+  });
+
+  it("returns a verified failure when reconciliation finds a denied capture", async () => {
+    installFetch({
+      capture: () => {
+        throw timeoutError();
+      },
+      status: () => jsonResponse(orderStatusBody({ captureStatus: "DENIED" })),
+    });
+    const order = await seedOrder();
+
+    const result = await callCapture(order.orderId, order.captureToken);
+
+    expect(result.status).toBe(402);
+    expect(result.body).toMatchObject({
+      success: false,
+      error: "capture_denied",
+      status: "DENIED",
+    });
+    expect(captureCalls()).toHaveLength(1);
+  });
+
+  it("recovers a malformed capture response through reconciliation", async () => {
+    installFetch({
+      capture: () => jsonResponse({ id: ORDER_ID, status: "COMPLETED" }),
+      status: () => jsonResponse(orderStatusBody()),
+    });
+    const order = await seedOrder();
+
+    const result = await callCapture(order.orderId, order.captureToken);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      success: true,
+      captureId: CAPTURE_ID,
+      alreadyCaptured: true,
+    });
+    expect(captureCalls()).toHaveLength(1);
+    expect(statusCalls()).toHaveLength(1);
+  });
+
+  it("restores order from PayPal and succeeds if in-memory order was lost across serverless instances", async () => {
+    installFetch({
+      capture: () => jsonResponse(captureBody()),
+      status: () =>
+        jsonResponse(
+          orderStatusBody({
+            orderStatus: "APPROVED",
+            captures: [],
+          }),
+        ),
+    });
+    const order = await seedOrder();
+
+    // Simulate serverless container recycling / missing memory state
+    resetPaymentStoreForTests();
+
+    const result = await callCapture(order.orderId, order.captureToken, {
+      headers: { "x-shopmate-reference-id": order.referenceId },
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      success: true,
+      captureId: CAPTURE_ID,
+    });
+  });
+
+  it("restores and reconciles an already-completed order if in-memory order was lost", async () => {
+    installFetch({
+      status: () =>
+        jsonResponse(
+          orderStatusBody({
+            orderStatus: "COMPLETED",
+            captureStatus: "COMPLETED",
+          }),
+        ),
+    });
+    const order = await seedOrder();
+
+    resetPaymentStoreForTests();
+
+    const result = await callCapture(order.orderId, order.captureToken, {
+      headers: { "x-shopmate-reference-id": order.referenceId },
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      success: true,
+      captureId: CAPTURE_ID,
+      alreadyCaptured: true,
+    });
+    expect(statusCalls()).toHaveLength(2);
   });
 });

@@ -6,6 +6,7 @@
  * type-only imports — no agent or zod runtime code ships to the client.
  */
 import type { ChatApiResponse, ChatRequest } from "@/lib/agent/chat-contract";
+import type { ShoppingIntentSummary } from "@/types";
 
 export type { ChatApiResponse };
 
@@ -14,7 +15,7 @@ export interface SendChatInput {
   history: { role: "user" | "assistant"; content: string }[];
   message: string;
   /** Intent accumulated so far, sent back to keep context across turns. */
-  intent?: ChatRequest["intent"];
+  intent?: ShoppingIntentSummary | ChatRequest["intent"];
   signal?: AbortSignal;
 }
 

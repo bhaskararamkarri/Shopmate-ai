@@ -17,7 +17,7 @@ export function ProductProvenanceBadge({
   showMerchant?: boolean;
   className?: string;
 }) {
-  if (product.source === "channel3" && product.merchant && showMerchant) {
+  if (product.source === "channel3") {
     return (
       <span
         className={cn(
@@ -27,7 +27,9 @@ export function ProductProvenanceBadge({
       >
         <Zap className="size-3 shrink-0 text-primary" aria-hidden="true" />
         <span className="font-semibold tracking-wide text-foreground">LIVE</span>
-        <span className="truncate">via {product.merchant}</span>
+        {showMerchant && product.merchant ? (
+          <span className="truncate">via {product.merchant}</span>
+        ) : null}
       </span>
     );
   }

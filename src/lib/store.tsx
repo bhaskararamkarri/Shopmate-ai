@@ -302,6 +302,19 @@ function createShopStore() {
     clearCompare(): void {
       commit((previous) => ({ ...previous, compare: [] }));
     },
+    setCompare(ids: string[]): void {
+      const seen = new Set<string>();
+      const valid: string[] = [];
+      for (const id of ids) {
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        if (resolveProduct(id) !== undefined) {
+          valid.push(id);
+          if (valid.length >= MAX_COMPARE_ITEMS) break;
+        }
+      }
+      commit((previous) => ({ ...previous, compare: valid }));
+    },
   };
 }
 
@@ -324,6 +337,7 @@ interface ShopContextValue {
   compareProducts: Product[];
   toggleCompare: (productId: string) => void;
   clearCompare: () => void;
+  setCompare: (ids: string[]) => void;
   isComparing: (productId: string) => boolean;
   /** False only when the item is unselected and the comparison is full. */
   canToggleCompare: (productId: string) => boolean;
@@ -377,6 +391,7 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       compareProducts,
       toggleCompare: shopStore.toggleCompare,
       clearCompare: shopStore.clearCompare,
+      setCompare: shopStore.setCompare,
       isComparing: (productId: string) => compareSet.has(productId),
       canToggleCompare: (productId: string) =>
         compareSet.has(productId) ||
@@ -393,4 +408,33 @@ export function useShop(): ShopContextValue {
     throw new Error("useShop must be used within a ShopProvider");
   }
   return context;
+}
+
+export function useCart() {
+  const shop = useShop();
+  return {
+    addToCart: shop.addToCart,
+    removeFromCart: shop.removeFromCart,
+    setQuantity: shop.setQuantity,
+    clearCart: shop.clearCart,
+    isInCart: shop.isInCart,
+    cartLines: shop.cartLines,
+    cartItems: shop.cartItems,
+    cartCount: shop.cartCount,
+    cartSubtotal: shop.cartSubtotal,
+    hasLiveItems: shop.hasLiveItems,
+  };
+}
+
+export function useCompare() {
+  const shop = useShop();
+  return {
+    compareIds: shop.compareIds,
+    compareProducts: shop.compareProducts,
+    toggleCompare: shop.toggleCompare,
+    clearCompare: shop.clearCompare,
+    setCompare: shop.setCompare,
+    isComparing: shop.isComparing,
+    canToggleCompare: shop.canToggleCompare,
+  };
 }
