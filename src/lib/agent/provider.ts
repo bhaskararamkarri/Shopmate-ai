@@ -222,27 +222,38 @@ export function resolveModelId(provider: AIProviderName = getProviderName()): st
 
   const genericOverride = readEnv("SHOPMATE_AI_MODEL");
   if (genericOverride) {
-    // Prevent cross-provider model mismatches (e.g. Groq openai/ models passed to Google)
-    if (
-      provider === "google" &&
-      (genericOverride.startsWith("openai/") || genericOverride.includes("llama"))
-    ) {
+    if (provider === "google") {
+      // Google only accepts Gemini models. Generic Groq/OpenAI/Llama model strings must never be passed to Google.
+      if (genericOverride.startsWith("gemini-") || genericOverride.startsWith("models/gemini-")) {
+        return genericOverride;
+      }
       return DEFAULT_MODELS.google;
     }
-    if (provider === "groq" && genericOverride.startsWith("gemini-")) {
-      return DEFAULT_MODELS.groq;
+    if (provider === "cerebras") {
+      // Cerebras accepts standard Cerebras models (gpt-oss-120b, llama-3.3-70b, qwen-3.8-27b).
+      // Discard Gemini or openai/ prefix strings intended for other providers.
+      if (
+        genericOverride.startsWith("openai/") ||
+        genericOverride.startsWith("gemini-") ||
+        genericOverride.startsWith("models/")
+      ) {
+        return DEFAULT_MODELS.cerebras;
+      }
+      return genericOverride;
     }
-    if (
-      provider === "cerebras" &&
-      (genericOverride.startsWith("gemini-") || genericOverride.startsWith("openai/"))
-    ) {
-      return DEFAULT_MODELS.cerebras;
+    if (provider === "openrouter") {
+      // Discard generic openai/ or gemini- overrides that break OpenRouter free routing
+      if (genericOverride.startsWith("openai/") || genericOverride.startsWith("gemini-")) {
+        return DEFAULT_MODELS.openrouter;
+      }
+      return genericOverride;
     }
-    if (
-      provider === "openrouter" &&
-      (genericOverride.startsWith("openai/") || genericOverride.startsWith("gemini-"))
-    ) {
-      return DEFAULT_MODELS.openrouter;
+    if (provider === "groq") {
+      // Groq does not accept Google Gemini models
+      if (genericOverride.startsWith("gemini-") || genericOverride.startsWith("models/")) {
+        return DEFAULT_MODELS.groq;
+      }
+      return genericOverride;
     }
     return genericOverride;
   }

@@ -206,4 +206,77 @@ describe("executeWithFailover", () => {
     );
     expect(runner).toHaveBeenCalledTimes(1);
   });
+
+  it("fails over through all tiers to OpenRouter when Google, Cerebras, and Groq fail", async () => {
+    const candidates = [
+      makeCandidate("google", "gemini-3.8-flash"),
+      makeCandidate("cerebras", "gpt-oss-120b"),
+      makeCandidate("groq", "openai/gpt-oss-120b"),
+      makeCandidate("openrouter", "openrouter/free"),
+    ];
+
+    const runner = vi.fn().mockImplementation(async (c: ProviderCandidate) => {
+      if (c.name === "google") throw statusError("Google 404", 404);
+      if (c.name === "cerebras") throw statusError("Cerebras 429", 429);
+      if (c.name === "groq") throw statusError("Groq 500", 500);
+      return `result from ${c.name}`;
+    });
+
+    const output = await executeWithFailover(candidates, runner);
+    expect(output.result).toBe("result from openrouter");
+    expect(output.provider).toBe("openrouter");
+    expect(output.attempts.length).toBe(4);
+    expect(output.attempts.map((a) => a.provider)).toEqual([
+      "google",
+      "cerebras",
+      "groq",
+      "openrouter",
+    ]);
+    expect(output.attempts[3].succeeded).toBe(true);
+  });
+
+  it("stops failover chain before trying remaining candidates when total request deadline is exhausted", async () => {
+    const candidates = [
+      makeCandidate("google", "gemini-3.8-flash"),
+      makeCandidate("cerebras", "gpt-oss-120b"),
+      makeCandidate("groq", "openai/gpt-oss-120b"),
+      makeCandidate("openrouter", "openrouter/free"),
+    ];
+
+    const runner = vi.fn().mockImplementation(async (c: ProviderCandidate) => {
+      if (c.name === "google") {
+        // Simulate an operation that consumes most of the deadline
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        throw statusError("Google timeout", 408);
+      }
+      return `result from ${c.name}`;
+    });
+
+    // Total deadline of 70ms with minimum budget of 30ms -> after Google (60ms), remaining is < 30ms
+    await expect(
+      executeWithFailover(candidates, runner, {
+        totalDeadlineMs: 70,
+        minAttemptBudgetMs: 30,
+      }),
+    ).rejects.toThrow(AllProvidersFailedError);
+
+    // Only Google should have been attempted; Cerebras, Groq, OpenRouter stopped by deadline
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it("provides bounded abortSignal and context to candidate runner", async () => {
+    const candidates = [makeCandidate("google", "gemini-3.8-flash")];
+    let capturedSignal: AbortSignal | undefined;
+
+    const runner = vi.fn().mockImplementation(async (_c, context) => {
+      capturedSignal = context.abortSignal;
+      expect(context.remainingBudgetMs).toBeGreaterThan(0);
+      expect(context.attemptBudgetMs).toBeGreaterThan(0);
+      return "success";
+    });
+
+    await executeWithFailover(candidates, runner, { totalDeadlineMs: 10_000 });
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+  });
 });

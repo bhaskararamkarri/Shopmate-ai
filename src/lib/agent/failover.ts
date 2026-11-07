@@ -158,28 +158,67 @@ export function isFailoverEligibleError(error: unknown, depth = 0): boolean {
   return transientPatterns.some((pattern) => message.includes(pattern));
 }
 
+export interface FailoverExecutionOptions {
+  /** Maximum total elapsed time across all failover attempts (default 50,000ms). */
+  totalDeadlineMs?: number;
+  /** Minimum remaining milliseconds required to start a candidate attempt (default 3,000ms). */
+  minAttemptBudgetMs?: number;
+}
+
+export interface CandidateAttemptContext {
+  remainingBudgetMs: number;
+  attemptBudgetMs: number;
+  abortSignal: AbortSignal;
+}
+
 /**
  * Executes a runner function with sequential failover across provided candidate models.
  * Automatically tries the next candidate upon encountering a failover-eligible error.
- * Bounded by candidate list length and individual candidate timeouts.
+ * Bounded by total request deadline, candidate list length, and individual candidate timeouts.
  */
 export async function executeWithFailover<T>(
   candidates: ProviderCandidate[],
-  runner: (candidate: ProviderCandidate) => Promise<T>,
+  runner: (candidate: ProviderCandidate, context: CandidateAttemptContext) => Promise<T>,
+  options?: FailoverExecutionOptions,
 ): Promise<FailoverExecutionResult<T>> {
   if (candidates.length === 0) {
     throw new AllProvidersFailedError("No AI providers configured");
   }
+
+  const totalDeadlineMs = options?.totalDeadlineMs ?? 50_000;
+  const minAttemptBudgetMs = options?.minAttemptBudgetMs ?? 3_000;
+  const loopStartTime = Date.now();
 
   const attempts: ProviderAttemptRecord[] = [];
   let lastStatus: number | undefined;
 
   for (let i = 0; i < candidates.length; i++) {
     const candidate = candidates[i];
+    const elapsedMs = Date.now() - loopStartTime;
+    const remainingBudgetMs = totalDeadlineMs - elapsedMs;
+
+    if (remainingBudgetMs < minAttemptBudgetMs) {
+      console.warn(
+        `[agent] Total deadline budget exhausted (${remainingBudgetMs}ms remaining < ${minAttemptBudgetMs}ms minimum). ` +
+          `Stopping failover before attempting provider=${candidate.name}.`,
+      );
+      break;
+    }
+
+    const candidateTimeout = candidate.timeoutMs ?? 15_000;
+    const attemptBudgetMs = Math.max(
+      minAttemptBudgetMs,
+      Math.min(candidateTimeout, remainingBudgetMs),
+    );
+    const abortSignal = AbortSignal.timeout(attemptBudgetMs);
     const startTime = Date.now();
 
     try {
-      const result = await runner(candidate);
+      const result = await runner(candidate, {
+        remainingBudgetMs,
+        attemptBudgetMs,
+        abortSignal,
+      });
       const latencyMs = Date.now() - startTime;
 
       attempts.push({
@@ -243,7 +282,7 @@ export async function executeWithFailover<T>(
     .join(" -> ");
 
   throw new AllProvidersFailedError(
-    `All AI providers failed: [${summary}]`,
+    `All AI providers failed: [${summary || "deadline_exhausted"}]`,
     lastStatus,
     attempts,
   );

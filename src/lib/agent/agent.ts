@@ -313,7 +313,7 @@ export async function runAgentTurn(
   ];
 
   try {
-    const execution = await executeWithFailover(candidates, async (candidate) => {
+    const execution = await executeWithFailover(candidates, async (candidate, context) => {
       // Fresh isolated context per provider attempt to prevent partial side effects
       const intentRef = { current: { ...baseIntent } };
       const ctx = createContext(catalog, intentRef, input.userId);
@@ -331,11 +331,13 @@ export async function runAgentTurn(
         instructions: buildInstructions(intentRef.current),
         tools,
         stopWhen: isStepCount(MAX_STEPS),
+        maxRetries: 0,
         maxOutputTokens: 1024,
       });
 
       const result = await agent.generate({
         messages,
+        abortSignal: context?.abortSignal,
       });
 
       // Safeguard: if the model turn did not search the catalog, retrieve relevant catalog

@@ -211,4 +211,60 @@ describe("provider configuration", () => {
     const candidates = getConfiguredProviders();
     expect(candidates.map((c) => c.name)).toEqual(["groq", "cerebras", "google"]);
   });
+
+  describe("model resolution isolation & safety", () => {
+    it("prevents generic Groq/OpenAI overrides from corrupting Google model resolution", () => {
+      // Common legacy or Groq-pinned generic model settings
+      setEnv({ SHOPMATE_AI_MODEL: "openai/gpt-oss-120b" });
+      expect(resolveModelId("google")).toBe("gemini-3.8-flash");
+
+      setEnv({ SHOPMATE_AI_MODEL: "llama-3.3-70b-versatile" });
+      expect(resolveModelId("google")).toBe("gemini-3.8-flash");
+
+      setEnv({ SHOPMATE_AI_MODEL: "gpt-oss-120b" });
+      expect(resolveModelId("google")).toBe("gemini-3.8-flash");
+    });
+
+    it("allows explicit Google-specific model override", () => {
+      setEnv({
+        SHOPMATE_AI_MODEL: "openai/gpt-oss-120b",
+        SHOPMATE_AI_MODEL_GOOGLE: "gemini-2.0-flash",
+      });
+      expect(resolveModelId("google")).toBe("gemini-2.0-flash");
+    });
+
+    it("allows valid Gemini model string through generic override", () => {
+      setEnv({ SHOPMATE_AI_MODEL: "gemini-2.5-flash" });
+      expect(resolveModelId("google")).toBe("gemini-2.5-flash");
+    });
+
+    it("preserves correct Cerebras default and allows specific override", () => {
+      expect(resolveModelId("cerebras")).toBe("gpt-oss-120b");
+
+      // Generic Groq or Gemini models do not corrupt Cerebras
+      setEnv({ SHOPMATE_AI_MODEL: "openai/gpt-oss-120b" });
+      expect(resolveModelId("cerebras")).toBe("gpt-oss-120b");
+
+      setEnv({ SHOPMATE_AI_MODEL: "gemini-3.8-flash" });
+      expect(resolveModelId("cerebras")).toBe("gpt-oss-120b");
+
+      // Specific Cerebras override works
+      setEnv({ SHOPMATE_AI_MODEL_CEREBRAS: "llama-3.3-70b" });
+      expect(resolveModelId("cerebras")).toBe("llama-3.3-70b");
+    });
+
+    it("preserves correct Groq and OpenRouter model resolution", () => {
+      expect(resolveModelId("groq")).toBe("openai/gpt-oss-120b");
+      expect(resolveModelId("openrouter")).toBe("openrouter/free");
+
+      // Generic Groq override
+      setEnv({ SHOPMATE_AI_MODEL: "llama-3.3-70b-versatile" });
+      expect(resolveModelId("groq")).toBe("llama-3.3-70b-versatile");
+
+      // Generic Gemini override does not corrupt Groq or OpenRouter
+      setEnv({ SHOPMATE_AI_MODEL: "gemini-3.8-flash" });
+      expect(resolveModelId("groq")).toBe("openai/gpt-oss-120b");
+      expect(resolveModelId("openrouter")).toBe("openrouter/free");
+    });
+  });
 });

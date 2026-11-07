@@ -334,4 +334,55 @@ describe("runAgentTurn multi-provider automatic failover", () => {
     expect(result.intent.budgetMax).toBe(80);
     expect(result.intent.budget).toEqual({ amount: 80, currency: "USD" });
   });
+
+  it("fails over through all 4 providers: Google (404) -> Cerebras (timeout) -> Groq (429) -> OpenRouter", async () => {
+    const searchMock = vi.fn(async () => ({ source: "demo" as const, products: [p1] }));
+    const catalog = { search: searchMock, getProduct: vi.fn(async () => null) };
+
+    const failingGoogle = createFailingModel(() => statusError("Google 404 Model Not Found", 404));
+    const timeoutCerebras = createFailingModel(() => {
+      const err = new Error("Cerebras inference timeout");
+      err.name = "TimeoutError";
+      return err;
+    });
+    const failingGroq = createFailingModel(() => statusError("Groq 429 Rate Limit", 429));
+    const successfulOpenRouter = createMockToolModel("Recommended from OpenRouter fallback.");
+
+    const providers: ProviderCandidate[] = [
+      {
+        name: "google",
+        modelId: "gemini-3.8-flash",
+        createModel: () => failingGoogle,
+        timeoutMs: 15_000,
+      },
+      {
+        name: "cerebras",
+        modelId: "gpt-oss-120b",
+        createModel: () => timeoutCerebras,
+        timeoutMs: 15_000,
+      },
+      {
+        name: "groq",
+        modelId: "openai/gpt-oss-120b",
+        createModel: () => failingGroq,
+        timeoutMs: 15_000,
+      },
+      {
+        name: "openrouter",
+        modelId: "openrouter/free",
+        createModel: () => successfulOpenRouter,
+        timeoutMs: 15_000,
+      },
+    ];
+
+    const result = await runAgentTurn(
+      { history: [], message: "running shoes" },
+      { catalog, providers },
+    );
+
+    expect(result.mode).toBe("ai");
+    expect(result.model).toBe("openrouter/free");
+    expect(result.content).toBe("Recommended from OpenRouter fallback.");
+    expect(result.products.length).toBe(1);
+  });
 });
