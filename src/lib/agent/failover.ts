@@ -48,9 +48,10 @@ export class AllProvidersFailedError extends Error {
 
 /**
  * Extracts numeric HTTP status code from arbitrary provider error structures.
+ * Protected against circular references with a recursion depth limit.
  */
-export function extractErrorStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") return undefined;
+export function extractErrorStatus(error: unknown, depth = 0): number | undefined {
+  if (depth > 5 || !error || typeof error !== "object") return undefined;
   const direct = (error as { statusCode?: unknown; status?: unknown }).statusCode ??
     (error as { status?: unknown }).status;
   if (typeof direct === "number") return direct;
@@ -58,9 +59,15 @@ export function extractErrorStatus(error: unknown): number | undefined {
   const nested = (error as { response?: { status?: unknown } }).response?.status;
   if (typeof nested === "number") return nested;
 
+  const lastError = (error as { lastError?: unknown }).lastError;
+  if (lastError && typeof lastError === "object") {
+    const s = extractErrorStatus(lastError, depth + 1);
+    if (typeof s === "number") return s;
+  }
+
   const cause = (error as { cause?: unknown }).cause;
   if (cause && typeof cause === "object") {
-    return extractErrorStatus(cause);
+    return extractErrorStatus(cause, depth + 1);
   }
 
   return undefined;
@@ -68,9 +75,10 @@ export function extractErrorStatus(error: unknown): number | undefined {
 
 /**
  * Extracts Retry-After delay (in seconds) if present on the error or response headers.
+ * Protected against circular references with a recursion depth limit.
  */
-export function extractRetryAfterSec(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") return undefined;
+export function extractRetryAfterSec(error: unknown, depth = 0): number | undefined {
+  if (depth > 5 || !error || typeof error !== "object") return undefined;
   const headers =
     (error as { headers?: Record<string, string> }).headers ??
     (error as { response?: { headers?: Record<string, string> } }).response?.headers;
@@ -83,6 +91,12 @@ export function extractRetryAfterSec(error: unknown): number | undefined {
     }
   }
 
+  const lastError = (error as { lastError?: unknown }).lastError;
+  if (lastError && typeof lastError === "object") {
+    const r = extractRetryAfterSec(lastError, depth + 1);
+    if (typeof r === "number") return r;
+  }
+
   return undefined;
 }
 
@@ -91,11 +105,12 @@ export function extractRetryAfterSec(error: unknown): number | undefined {
  * Returns true for 429 (rate limits/quotas), 5xx (server errors), 408 (timeout),
  * aborts/timeouts, and known transient network issues.
  * Returns false for ordinary validation errors, syntax errors, or unrecoverable client errors.
+ * Protected against circular references with a recursion depth limit.
  */
-export function isFailoverEligibleError(error: unknown): boolean {
-  if (!error) return false;
+export function isFailoverEligibleError(error: unknown, depth = 0): boolean {
+  if (depth > 5 || !error) return false;
 
-  const status = extractErrorStatus(error);
+  const status = extractErrorStatus(error, depth);
   if (typeof status === "number") {
     // 401/403: Provider credential failure / unauthorized (fail over to next provider)
     if (status === 401 || status === 403) return true;
@@ -111,6 +126,9 @@ export function isFailoverEligibleError(error: unknown): boolean {
 
   const name = error instanceof Error ? error.name : "";
   if (name === "TimeoutError" || name === "AbortError") return true;
+
+  const lastError = (error as { lastError?: unknown }).lastError;
+  if (lastError && isFailoverEligibleError(lastError, depth + 1)) return true;
 
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 

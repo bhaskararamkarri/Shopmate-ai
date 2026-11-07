@@ -160,7 +160,7 @@ describe("provider configuration", () => {
     const candidates = getConfiguredProviders();
     expect(candidates.some((c) => c.name === "cerebras")).toBe(true);
     const cerebrasCandidate = candidates.find((c) => c.name === "cerebras")!;
-    expect(cerebrasCandidate.modelId).toBe("llama-3.3-70b");
+    expect(cerebrasCandidate.modelId).toBe("gpt-oss-120b");
     const model = cerebrasCandidate.createModel();
     expect(model).toBeDefined();
   });

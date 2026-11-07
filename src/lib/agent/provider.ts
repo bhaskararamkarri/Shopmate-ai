@@ -23,7 +23,7 @@ export type AIProviderName = "google" | "cerebras" | "groq" | "openrouter" | "ol
 /** Default chat model per provider. Verified current active models. */
 export const DEFAULT_MODELS: Record<AIProviderName, string> = {
   google: "gemini-3.8-flash",
-  cerebras: "llama-3.3-70b",
+  cerebras: "gpt-oss-120b",
   groq: "openai/gpt-oss-120b",
   openrouter: "openrouter/free",
   ollama: "gemma3:4b",
@@ -69,10 +69,13 @@ export function aiTimeoutMs(provider?: AIProviderName): number {
 }
 
 /**
- * Fetch wrapper bounding every Groq request with a timeout. Combines the
- * SDK's own abort signal (when present) with the timeout so either can fire.
+ * Sanitizes OpenAI-compatible chat completion request bodies by stripping
+ * non-standard fields that providers like Cerebras and Groq reject on multi-step turns
+ * (such as `reasoning_content` injected into assistant history messages by the AI SDK).
+ *
+ * Preserves all legitimate tool_calls, arguments, tool results, message order, and conversation context.
  */
-export function stripGroqUnsupportedRequestFields(body: string): string {
+export function sanitizeOpenAICompatibleRequestBody(body: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -102,9 +105,12 @@ export function stripGroqUnsupportedRequestFields(body: string): string {
   return changed ? JSON.stringify(parsed) : body;
 }
 
-function createGroqFetch(underlying: typeof fetch = fetch): typeof fetch {
+/** Backward compatibility alias for Groq tests */
+export const stripGroqUnsupportedRequestFields = sanitizeOpenAICompatibleRequestBody;
+
+export function createOpenAICompatibleFetch(provider: AIProviderName, underlying: typeof fetch = fetch): typeof fetch {
   return (input, init) => {
-    const timeoutSignal = AbortSignal.timeout(aiTimeoutMs("groq"));
+    const timeoutSignal = AbortSignal.timeout(aiTimeoutMs(provider));
     const upstream = init?.signal;
     const signal = upstream
       ? AbortSignal.any([upstream, timeoutSignal])
@@ -117,10 +123,14 @@ function createGroqFetch(underlying: typeof fetch = fetch): typeof fetch {
           : input.url;
     let body = init?.body;
     if (typeof body === "string" && url.includes("/chat/completions")) {
-      body = stripGroqUnsupportedRequestFields(body);
+      body = sanitizeOpenAICompatibleRequestBody(body);
     }
     return underlying(input, { ...init, body, signal });
   };
+}
+
+function createGroqFetch(underlying: typeof fetch = fetch): typeof fetch {
+  return createOpenAICompatibleFetch("groq", underlying);
 }
 
 function createTimeoutFetch(provider: AIProviderName, underlying: typeof fetch = fetch): typeof fetch {
@@ -155,7 +165,7 @@ export function createCerebrasModel(
     name: "cerebras",
     baseURL: DEFAULT_CEREBRAS_URL,
     apiKey,
-    fetch: createTimeoutFetch("cerebras", options?.fetch ?? fetch),
+    fetch: createOpenAICompatibleFetch("cerebras", options?.fetch),
   });
   return cerebras(options?.modelId ?? resolveModelId("cerebras"));
 }
@@ -187,7 +197,7 @@ export function createOpenRouterModel(
       "HTTP-Referer": "https://shopmate-ai.com",
       "X-Title": "ShopMate AI",
     },
-    fetch: createTimeoutFetch("openrouter", options?.fetch ?? fetch),
+    fetch: createOpenAICompatibleFetch("openrouter", options?.fetch),
   });
   return openrouter(options?.modelId ?? resolveModelId("openrouter"));
 }
@@ -227,6 +237,12 @@ export function resolveModelId(provider: AIProviderName = getProviderName()): st
       (genericOverride.startsWith("gemini-") || genericOverride.startsWith("openai/"))
     ) {
       return DEFAULT_MODELS.cerebras;
+    }
+    if (
+      provider === "openrouter" &&
+      (genericOverride.startsWith("openai/") || genericOverride.startsWith("gemini-"))
+    ) {
+      return DEFAULT_MODELS.openrouter;
     }
     return genericOverride;
   }
