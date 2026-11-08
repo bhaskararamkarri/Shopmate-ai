@@ -24,12 +24,36 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://shopmate-ai.vercel.app"),
   title: {
     default: "ShopMate AI — Don't just shop. Make the right decision.",
     template: "%s — ShopMate AI",
   },
   description:
-    "An AI shopping decision engine: describe what you need, get a verified shortlist and honest trade-offs from the live catalog, pin a comparison, and decide with confidence.",
+    "Shop smarter. Choose with confidence. An AI shopping decision engine: describe what you need, get a verified shortlist and honest trade-offs from the live catalog, pin a comparison, and decide with confidence.",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/apple-icon.png",
+  },
+  openGraph: {
+    title: "ShopMate AI — Shop smarter. Choose with confidence.",
+    description:
+      "An AI shopping decision engine: describe what you need, get a verified shortlist and honest trade-offs from the live catalog.",
+    siteName: "ShopMate AI",
+    images: [
+      {
+        url: "/brand/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "ShopMate AI — Shop smarter. Choose with confidence.",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, Sparkles, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { useShop } from "@/lib/store";
+import { ShopMateLogo } from "@/components/brand/logo";
 
 const NAV_LINKS = [
   { href: "/", label: "Discover" },
@@ -55,16 +56,10 @@ export function Navbar() {
         <Link
           href="/"
           onClick={() => setMobileOpen(false)}
-          className="flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex items-center gap-2 rounded-lg transition-opacity hover:opacity-95 focus-visible:outline-2 focus-visible:outline-ring"
+          aria-label="ShopMate AI Home"
         >
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/20">
-            <Sparkles className="size-4" aria-hidden="true" />
-          </span>
-          <div className="flex flex-col">
-            <span className="text-base font-semibold tracking-tight text-foreground">
-              ShopMate <span className="text-primary font-bold">AI</span>
-            </span>
-          </div>
+          <ShopMateLogo variant="horizontal" size="md" className="h-9 w-auto" />
         </Link>
 
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">

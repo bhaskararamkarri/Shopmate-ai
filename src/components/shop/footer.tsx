@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { ShopMateLogo } from "@/components/brand/logo";
 
 /** Release year stamped into the footer. */
 const COPYRIGHT_YEAR = 2026;
@@ -17,14 +17,9 @@ export function Footer() {
       <div className="mx-auto w-full max-w-6xl px-4 py-14 md:px-6">
         <div className="grid gap-10 md:grid-cols-[1.5fr_0.8fr_0.8fr]">
           <div className="space-y-3.5">
-            <div className="flex items-center gap-2.5">
-              <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/20">
-                <Sparkles className="size-4" aria-hidden="true" />
-              </span>
-              <span className="text-base font-semibold tracking-tight text-foreground">
-                ShopMate <span className="text-primary font-bold">AI</span>
-              </span>
-            </div>
+            <Link href="/" className="inline-block transition-opacity hover:opacity-95" aria-label="ShopMate AI Home">
+              <ShopMateLogo variant="horizontal" size="md" className="h-9 w-auto" />
+            </Link>
             <p className="max-w-sm text-sm font-medium text-foreground/90">
               Shop smarter. Choose with confidence.
             </p>

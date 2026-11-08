@@ -23,6 +23,7 @@ import { ProductGrid } from "@/components/shop/product-grid";
 import { ProductImage } from "@/components/shop/product-image";
 import { Reveal } from "@/components/shop/reveal";
 import { SectionHeading } from "@/components/shop/section-heading";
+import { ShopMateLogo } from "@/components/brand/logo";
 import {
   DEMO_CATEGORIES,
   getFeaturedDemoProducts,
@@ -377,7 +378,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between border-b border-border pb-4">
                 <div className="flex items-center gap-2.5">
                   <span className="grid size-8 place-items-center rounded-lg bg-primary/15 text-primary">
-                    <Sparkles className="size-4" aria-hidden="true" />
+                    <ShopMateLogo variant="icon" size="sm" className="size-6" />
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-foreground">

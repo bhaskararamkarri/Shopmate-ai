@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 68" fill="none" role="img" aria-label="ShopMate AI Logo">
+  <defs>
+    <!-- Mascot Gradients -->
+    <radialGradient id="sm-logo-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="sm-logo-bag-grad" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="45%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <linearGradient id="sm-logo-handle-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+    <linearGradient id="sm-logo-swoosh-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC" />
+      <stop offset="50%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+    <!-- Mate Wordmark Gradient -->
+    <linearGradient id="sm-mate-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <!-- Tagline Swoosh Gradient -->
+    <linearGradient id="sm-tagline-swoosh" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0" />
+      <stop offset="50%" stop-color="#8B5CF6" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Mascot Symbol (Left) -->
+  <g transform="translate(4, 2)">
+    <!-- Ambient Glow -->
+    <circle cx="32" cy="32" r="30" fill="url(#sm-logo-glow)" />
+
+    <!-- Handle -->
+    <path d="M 23 23 C 23 15, 41 15, 41 23" 
+          stroke="url(#sm-logo-handle-grad)" 
+          stroke-width="3.5" 
+          stroke-linecap="round" 
+          fill="none" />
+
+    <!-- Bag Body -->
+    <path d="M 18 24 L 46 24 C 48.5 24 50.4 25.8 50.8 28.2 L 53.6 47 C 54.1 49.8 51.9 52.2 49 52.2 L 15 52.2 C 12.1 52.2 9.9 49.8 10.4 47 L 13.2 28.2 C 13.6 25.8 15.5 24 18 24 Z" 
+          fill="url(#sm-logo-bag-grad)" />
+
+    <!-- Rim Highlight -->
+    <path d="M 17 24 L 47 24" 
+          stroke="#A78BFA" 
+          stroke-width="1.5" 
+          stroke-linecap="round" 
+          opacity="0.8" />
+
+    <!-- Robot Face Screen -->
+    <rect x="17" y="29" width="30" height="15" rx="7.5" 
+          fill="#0B0F19" 
+          stroke="#1E293B" 
+          stroke-width="1" />
+
+    <!-- Smiling Eyes -->
+    <path d="M 23 37 Q 26 33 29 37" 
+          stroke="#38BDF8" 
+          stroke-width="2" 
+          stroke-linecap="round" 
+          fill="none" />
+    <path d="M 35 37 Q 38 33 41 37" 
+        stroke="#38BDF8" 
+        stroke-width="2" 
+        stroke-linecap="round" 
+        fill="none" />
+
+    <!-- Cute Smile Mouth -->
+    <path d="M 30.5 40 Q 32 41.5 33.5 40" 
+          stroke="#38BDF8" 
+          stroke-width="1.2" 
+          stroke-linecap="round" 
+          fill="none" />
+
+    <!-- Orbit Swoosh Ring -->
+    <path d="M 6 44 C 5 53, 20 57, 36 54 C 48 51.5, 56 46, 58 40" 
+          stroke="url(#sm-logo-swoosh-grad)" 
+          stroke-width="3" 
+          stroke-linecap="round" 
+          fill="none" 
+          opacity="0.95" />
+
+    <!-- Mouse Cursor Pointer -->
+    <g transform="translate(38, 40) scale(0.65)">
+      <path d="M 0 0 L 16 12 L 9.5 13 L 13.5 22 L 9 24 L 5 15 L 0 20 Z" 
+            fill="#FFFFFF" 
+            stroke="#1E1B4B" 
+            stroke-width="1.5" 
+            stroke-linejoin="round" />
+    </g>
+
+    <!-- Sparkle Stars -->
+    <path d="M 52 14 Q 52 18 56 18 Q 52 18 52 22 Q 52 18 48 18 Q 52 18 52 14 Z" 
+          fill="#C084FC" />
+  </g>
+
+  <!-- Wordmark "ShopMate" -->
+  <text x="76" y="38" font-family="system-ui, -apple-system, 'Geist', 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="800" letter-spacing="-0.03em" fill="#FFFFFF">Shop<tspan fill="url(#sm-mate-grad)">Mate</tspan></text>
+
+  <!-- "AI" Badge -->
+  <g transform="translate(230, 18)">
+    <!-- Pill Background -->
+    <rect x="0" y="0" width="34" height="22" rx="7" fill="#8B5CF6" />
+    <!-- AI Text -->
+    <text x="17" y="15.5" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.02em">AI</text>
+    <!-- Radiant Burst Rays -->
+    <path d="M 32 -3 L 36 -6" stroke="#C084FC" stroke-width="1.75" stroke-linecap="round" />
+    <path d="M 37 3 L 42 2" stroke="#C084FC" stroke-width="1.75" stroke-linecap="round" />
+    <path d="M 35 10 L 40 12" stroke="#C084FC" stroke-width="1.75" stroke-linecap="round" />
+  </g>
+
+  <!-- Tagline -->
+  <text x="77" y="55" font-family="system-ui, -apple-system, 'Geist', sans-serif" font-size="11.5" font-weight="500" fill="#94A3B8" letter-spacing="0.01em">Shop smarter. Choose with confidence.</text>
+
+  <!-- Subtle Underline Swoosh -->
+  <path d="M 175 62 Q 235 59 310 63" stroke="url(#sm-tagline-swoosh)" stroke-width="1.75" stroke-linecap="round" fill="none" />
+</svg>
+

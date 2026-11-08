@@ -1,12 +1,13 @@
 "use client";
 
-import { Sparkles, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import type { ChatMessage, Product } from "@/types";
 import { getDemoProduct } from "@/lib/demo-catalog";
 import { CompactProductCard } from "@/components/shop/product-card";
 import { Button } from "@/components/ui/button";
 import { TypingDots } from "@/components/chat/typing-dots";
+import { ShopMateLogo } from "@/components/brand/logo";
 
 export interface UiMessage extends ChatMessage {
   /** Shown while the assistant reply is still composing. */
@@ -26,7 +27,7 @@ function Avatar({ className }: { className?: string }) {
         className,
       )}
     >
-      <Sparkles className="size-3.5" />
+      <ShopMateLogo variant="icon" size="sm" className="size-5" />
     </span>
   );
 }
