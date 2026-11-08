@@ -97,8 +97,9 @@ const NEUTRAL = 0.5;
 
 function specMatchScore(
   product: Product,
-  requiredSpecs: Record<string, string>,
+  requiredSpecs?: Record<string, string>,
 ): number {
+  if (!requiredSpecs) return NEUTRAL;
   const entries = Object.entries(requiredSpecs);
   if (entries.length === 0) return NEUTRAL;
 
@@ -184,7 +185,7 @@ function buildReasons(
     reasons.push("relevant to your search");
   }
 
-  const requiredEntries = Object.entries(criteria.requiredSpecs);
+  const requiredEntries = Object.entries(criteria.requiredSpecs || {});
   if (requiredEntries.length > 0) {
     const matched = requiredEntries.filter(([key, expected]) => {
       const actual = product.specs?.[key];
@@ -206,6 +207,15 @@ function buildReasons(
     } else if (breakdown.budgetFit === 0) {
       reasons.push(
         `over your ${formatMoney(criteria.budget.amount, criteria.budget.currency)} budget`,
+      );
+    } else if (
+      breakdown.budgetFit === NEUTRAL &&
+      criteria.budget.currency &&
+      product.currency &&
+      criteria.budget.currency.toUpperCase() !== product.currency.toUpperCase()
+    ) {
+      reasons.push(
+        `priced in ${product.currency}; budget compatibility with ${criteria.budget.currency} is unverified`,
       );
     }
   }

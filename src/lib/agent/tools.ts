@@ -158,61 +158,68 @@ export function createAgentTools(ctx: AgentToolContext) {
         if (searchesUsed >= ctx.budgets.searches) return BUDGET_EXHAUSTED;
         searchesUsed += 1;
 
-        const effectiveQuery = query?.trim()
-          ? query
-          : (ctx.intentRef.current.query || ctx.intentRef.current.category || ctx.intentRef.current.productCategory || "products");
-        const normalized = normalizeQuery(effectiveQuery);
-        if (!ctx.intentRef.current.query && normalized && normalized !== "products") {
-          ctx.intentRef.current.query = normalized;
-        }
-        const outcome = await ctx.catalog.search(normalized, {
-          // Default here, not only in the schema: direct callers (tests,
-          // fallback path) bypass the model loop's validation step.
-          limit: limit ?? 6,
-          userId: ctx.userId,
-        });
-        ctx.catalogMetaRef.current = {
-          source: outcome.source,
-          fallback: "fallback" in outcome ? outcome.fallback?.reason : undefined,
-        };
-
-        let candidates = outcome.products;
-        if (filters?.maxPrice !== undefined) {
-          candidates = candidates.filter(
-            (product) => Number.isFinite(product.price) && product.price <= filters.maxPrice!,
-          );
-        }
-        if (filters?.brand) {
-          const brandTokens = tokenize(filters.brand);
-          candidates = candidates.filter((product) =>
-            brandTokens.some((token) =>
-              tokenize(product.brand ?? "").includes(token),
-            ),
-          );
-        }
-
-        const { relevant, rejected, suggestion } = filterRelevant(
-          candidates,
-          criteriaFrom(normalized),
-        );
-
-        for (const { product } of relevant) {
-          ctx.catalogLog.set(product.id, product);
-        }
-
-        return {
-          data: catalogData({
+        try {
+          const effectiveQuery = query?.trim()
+            ? query
+            : (ctx.intentRef.current.query || ctx.intentRef.current.category || ctx.intentRef.current.productCategory || "products");
+          const normalized = normalizeQuery(effectiveQuery);
+          if (!ctx.intentRef.current.query && normalized && normalized !== "products") {
+            ctx.intentRef.current.query = normalized;
+          }
+          const outcome = await ctx.catalog.search(normalized, {
+            // Default here, not only in the schema: direct callers (tests,
+            // fallback path) bypass the model loop's validation step.
+            limit: limit ?? 6,
+            userId: ctx.userId,
+          });
+          ctx.catalogMetaRef.current = {
             source: outcome.source,
-            fallback: "fallback" in outcome ? outcome.fallback : undefined,
-            totalReturned: outcome.products.length,
-            rejectedCount: rejected.length,
-            suggestion,
-            products: relevant.map(({ product, score }) => ({
-              ...compactProduct(product),
-              relevanceScore: Number(score.toFixed(3)),
-            })),
-          }),
-        };
+            fallback: "fallback" in outcome ? outcome.fallback?.reason : undefined,
+          };
+
+          let candidates = outcome.products;
+          if (filters?.maxPrice !== undefined) {
+            candidates = candidates.filter(
+              (product) => Number.isFinite(product.price) && product.price <= filters.maxPrice!,
+            );
+          }
+          if (filters?.brand) {
+            const brandTokens = tokenize(filters.brand);
+            candidates = candidates.filter((product) =>
+              brandTokens.some((token) =>
+                tokenize(product.brand ?? "").includes(token),
+              ),
+            );
+          }
+
+          const { relevant, rejected, suggestion } = filterRelevant(
+            candidates,
+            criteriaFrom(normalized),
+          );
+
+          for (const { product } of relevant) {
+            ctx.catalogLog.set(product.id, product);
+          }
+
+          return {
+            data: catalogData({
+              source: outcome.source,
+              fallback: "fallback" in outcome ? outcome.fallback : undefined,
+              totalReturned: outcome.products.length,
+              rejectedCount: rejected.length,
+              suggestion,
+              products: relevant.map(({ product, score }) => ({
+                ...compactProduct(product),
+                relevanceScore: Number(score.toFixed(3)),
+              })),
+            }),
+          };
+        } catch (err) {
+          return {
+            error: "catalog_error",
+            message: err instanceof Error ? err.message : "Catalog search failed",
+          };
+        }
       },
     }),
 
@@ -228,11 +235,18 @@ export function createAgentTools(ctx: AgentToolContext) {
         if (detailsUsed >= ctx.budgets.details) return BUDGET_EXHAUSTED;
         detailsUsed += 1;
 
-        const found = await ctx.catalog.getProduct(productId);
-        if (!found) return { error: "not_found" as const };
+        try {
+          const found = await ctx.catalog.getProduct(productId);
+          if (!found) return { error: "not_found" as const };
 
-        ctx.catalogLog.set(found.id, found);
-        return { data: catalogData({ product: compactProduct(found) }) };
+          ctx.catalogLog.set(found.id, found);
+          return { data: catalogData({ product: compactProduct(found) }) };
+        } catch (err) {
+          return {
+            error: "catalog_error",
+            message: err instanceof Error ? err.message : "Product detail lookup failed",
+          };
+        }
       },
     }),
 
@@ -248,25 +262,32 @@ export function createAgentTools(ctx: AgentToolContext) {
         if (comparesUsed >= ctx.budgets.compares) return BUDGET_EXHAUSTED;
         comparesUsed += 1;
 
-        const products: Product[] = [];
-        const missingIds: string[] = [];
-        for (const id of productIds) {
-          const found = await ctx.catalog.getProduct(id);
-          if (found) {
-            products.push(found);
-            ctx.catalogLog.set(found.id, found);
-          } else {
-            missingIds.push(id);
+        try {
+          const products: Product[] = [];
+          const missingIds: string[] = [];
+          for (const id of productIds) {
+            const found = await ctx.catalog.getProduct(id);
+            if (found) {
+              products.push(found);
+              ctx.catalogLog.set(found.id, found);
+            } else {
+              missingIds.push(id);
+            }
           }
-        }
-        ctx.comparisonsRef.current.push({ productIds, missingIds });
+          ctx.comparisonsRef.current.push({ productIds, missingIds });
 
-        return {
-          data: catalogData({
-            products: products.map(compactProduct),
-            missingIds,
-          }),
-        };
+          return {
+            data: catalogData({
+              products: products.map(compactProduct),
+              missingIds,
+            }),
+          };
+        } catch (err) {
+          return {
+            error: "catalog_error",
+            message: err instanceof Error ? err.message : "Comparison lookup failed",
+          };
+        }
       },
     }),
 

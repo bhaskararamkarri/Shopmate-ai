@@ -112,6 +112,41 @@ function evaluateFailures(
     }
   }
 
+  // 5. Washing machine capacity check for family-of-four requests
+  const isWashingMachine =
+    textContains(product.category, "washing") ||
+    textContains(product.category, "washer") ||
+    textContains(product.name, "washer") ||
+    textContains(product.name, "washing machine");
+
+  const queryOrUse = `${intent.query || ""} ${intent.intendedUse || ""} ${(intent.priorities || []).join(" ")}`.toLowerCase();
+  const isFamilyRequest = queryOrUse.includes("family") || queryOrUse.includes("4 person") || queryOrUse.includes("4 people");
+
+  if (isWashingMachine && isFamilyRequest) {
+    const isCompactOrPortable =
+      textContains(product.name, "portable") ||
+      textContains(product.name, "twin tub") ||
+      textContains(product.name, "mini") ||
+      textContains(product.name, "compact") ||
+      textContains(product.description, "portable") ||
+      textContains(product.description, "twin tub") ||
+      textContains(product.description, "compact spaces");
+
+    const specKeys = Object.keys(product.specs || {});
+    const capacityKey = specKeys.find((k) => /capacity|tub|drum|load/i.test(k));
+    const hasCapacitySpec = Boolean(capacityKey && product.specs?.[capacityKey]?.trim());
+
+    if (isCompactOrPortable) {
+      failures.push(
+        "Compact/portable washer: typically designed for dorms/RVs; unverified capacity for a family of 4",
+      );
+    } else if (!hasCapacitySpec) {
+      failures.push(
+        "Washing load capacity is unknown in catalog specs; unverified for a family of 4",
+      );
+    }
+  }
+
   return failures;
 }
 
@@ -267,6 +302,15 @@ export function generateRecommendations(
     const prodCurrency = (product.currency || "USD").toUpperCase();
     const failures = productFailuresMap.get(product.id) ?? [];
 
+    const isWashingMachine =
+      textContains(product.category, "washing") ||
+      textContains(product.category, "washer") ||
+      textContains(product.name, "washer") ||
+      textContains(product.name, "washing machine");
+
+    const queryOrUse = `${intent.query || ""} ${intent.intendedUse || ""} ${(intent.priorities || []).join(" ")}`.toLowerCase();
+    const isFamilyRequest = queryOrUse.includes("family") || queryOrUse.includes("4 person") || queryOrUse.includes("4 people");
+
     let badge: "Best Overall" | "Best Value" | "Best Fit" | undefined = undefined;
     if (product.id === bestOverallId) {
       badge = "Best Overall";
@@ -357,8 +401,20 @@ export function generateRecommendations(
     // Currency conversion warning if currency differs from intent
     if (maxBudget !== undefined && prodCurrency !== targetCurrency) {
       missingOrUnverified.push(
-        `Price is in ${prodCurrency}; conversion to ${targetCurrency} requires live exchange rate`,
+        `Budget compatibility: UNVERIFIED (Price is in ${prodCurrency}; conversion to ${targetCurrency} requires live exchange rate)`,
       );
+    }
+    if (targetCurrency === "INR" && prodCurrency === "USD") {
+      missingOrUnverified.push(
+        "International US merchant listing; domestic delivery in India, warranty, and customs unverified",
+      );
+    }
+
+    if (isWashingMachine) {
+      const hasCapacity = specKeys.some((k) => /capacity|tub|drum|load/i.test(k));
+      if (!hasCapacity) {
+        missingOrUnverified.push("Washing load capacity: UNKNOWN (unlisted in merchant specifications)");
+      }
     }
 
     if (!hasWarrantySpec) {
@@ -458,6 +514,20 @@ export function generateRecommendations(
         : "Best for shoppers seeking close alignment with specific search criteria.";
     } else if (intent.intendedUse) {
       whoShouldChoose = `Recommended for ${intent.intendedUse} and everyday requirements.`;
+    }
+
+    if (isWashingMachine && isFamilyRequest) {
+      const isCompactOrPortable =
+        textContains(product.name, "portable") ||
+        textContains(product.name, "twin tub") ||
+        textContains(product.name, "mini") ||
+        textContains(product.name, "compact") ||
+        textContains(product.description, "portable") ||
+        textContains(product.description, "twin tub") ||
+        textContains(product.description, "compact spaces");
+      if (isCompactOrPortable) {
+        whoShouldChoose = "Shoppers needing a compact/portable washer for smaller spaces; load capacity is unverified for full family-of-4 needs.";
+      }
     }
 
     // Why it matches (incorporate failure notice if Best Overall failed a requirement)

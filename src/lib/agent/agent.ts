@@ -12,8 +12,8 @@
  * copy, never pretending the AI wrote it. A model failure maps to the
  * typed `ai_unavailable` error; the caller decides how to respond.
  */
-import { isStepCount, ToolLoopAgent, type ModelMessage } from "ai";
-import type { Product } from "@/types";
+import { ToolLoopAgent, type ModelMessage } from "ai";
+import type { Product, ProductRecommendationInsight } from "@/types";
 import { filterRelevant, tokenize } from "./relevance";
 import { rankProducts } from "./ranking";
 import { generateRecommendations } from "./decision-engine";
@@ -42,8 +42,13 @@ import type { ChatApiSuccess, ChatComparison } from "./chat-contract";
 /** Max products attached to a reply — matches the UI's result list. */
 const MAX_PRODUCTS = 6;
 
-/** Tool-loop ceiling: exactly 1 tool call + 1 answer step. */
-const MAX_STEPS = 2;
+/**
+ * Maximum steps allowed in the agent tool loop.
+ * Allows at least 2–4 useful tool executions (e.g. search, product details, compare)
+ * plus a final text response step (up to 5 steps total), with a hard safety limit
+ * against runaway loops.
+ */
+export const MAX_STEPS = 5;
 
 /** Typed failure thrown when the model layer cannot complete a turn. */
 export class AgentTurnError extends Error {
@@ -78,6 +83,70 @@ export interface RunAgentTurnDeps {
   providers?: ProviderCandidate[];
   /** Optional custom fetch. */
   fetch?: typeof fetch;
+}
+
+/**
+ * Synthesizes a transparent, grounded summary from verified product data and
+ * recommendations when the AI model does not generate final text.
+ * Never invents product facts, rankings, or specifications.
+ */
+export function synthesizeDeterministicSummary(params: {
+  products: Product[];
+  recommendations: ProductRecommendationInsight[];
+  query: string;
+  intent: ShoppingIntent;
+}): string {
+  const { products, recommendations, query, intent } = params;
+
+  if (products.length === 0) {
+    const q = query?.trim() ? ` for “${query.trim()}”` : "";
+    return `I searched the catalog${q}, but found no matching products. Try adjusting your search terms, removing restrictive filters, or searching for a different brand or category.`;
+  }
+
+  const lines: string[] = [];
+
+  // International / currency disclosure if applicable
+  const targetCurrency = (intent.currency ?? intent.budget?.currency ?? "USD").toUpperCase();
+  const hasCurrencyMismatch =
+    targetCurrency !== "USD" &&
+    products.some((p) => (p.currency || "USD").toUpperCase() === "USD");
+
+  if (hasCurrencyMismatch) {
+    lines.push(
+      `⚠️ Note: Catalog items are listed in USD by international merchants. Currency conversion to ${targetCurrency} is unverified without a live exchange rate, and international delivery/customs are unverified.`,
+      "",
+    );
+  }
+
+  const countStr = products.length === 1 ? "1 catalog option" : `${products.length} catalog options`;
+  const qStr = query?.trim() ? ` for “${query.trim()}”` : "";
+  lines.push(
+    `I found ${countStr}${qStr}. (Note: The AI explanation was temporarily unavailable, so here is a direct summary from verified catalog data):`,
+    "",
+  );
+
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    const rec = recommendations.find((r) => r.productId === p.id);
+    const badgeStr = rec?.badge ? ` [${rec.badge}]` : "";
+    const priceStr = Number.isFinite(p.price)
+      ? ` — ${p.currency || "USD"} ${p.price.toFixed(2)}`
+      : "";
+    const ratingStr = p.ratings > 0 ? ` (${p.ratings}★ from ${p.reviews} reviews)` : "";
+    lines.push(`${i + 1}. **${p.name}**${priceStr}${badgeStr}${ratingStr}`);
+
+    if (rec?.whyItMatches) {
+      lines.push(`   - ${rec.whyItMatches}`);
+    }
+    if (rec?.failedRequirements && rec.failedRequirements.length > 0) {
+      lines.push(`   - Note: ${rec.failedRequirements[0]}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("You can compare these items side by side or select one to view full specifications.");
+
+  return lines.join("\n");
 }
 
 /**
@@ -132,9 +201,21 @@ export function assembleTurn(input: {
     missingIds: group.missingIds,
   }));
 
+  const rawContent = input.content?.trim();
+  const content =
+    rawContent &&
+    rawContent !== "I could not compose a reply this time — try rephrasing."
+      ? rawContent
+      : synthesizeDeterministicSummary({
+          products,
+          recommendations,
+          query: input.query,
+          intent,
+        });
+
   return {
     success: true,
-    content: input.content,
+    content,
     intent: {
       ...intent,
       query: intent.query || input.query,
@@ -330,7 +411,7 @@ export async function runAgentTurn(
         model,
         instructions: buildInstructions(intentRef.current),
         tools,
-        stopWhen: isStepCount(MAX_STEPS),
+        stopWhen: ({ steps }) => steps.length >= MAX_STEPS,
         maxRetries: 0,
         maxOutputTokens: 1024,
       });
@@ -354,7 +435,7 @@ export async function runAgentTurn(
       }
 
       return assembleTurn({
-        content: result.text?.trim() || "I could not compose a reply this time — try rephrasing.",
+        content: result.text?.trim() || "",
         intent: intentRef.current,
         catalogLog: ctx.catalogLog,
         recommendedIds: ctx.recommendedIdsRef.current,

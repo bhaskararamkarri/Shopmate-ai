@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProductImage } from "@/components/shop/product-image";
 import { ProductProvenanceBadge } from "@/components/shop/product-provenance-badge";
+import { formatMoney } from "@/lib/format";
 import { useCart, useCompare } from "@/lib/store";
 import type { Product, ProductRecommendationInsight } from "@/types";
 
@@ -151,13 +152,8 @@ export function ShortlistPanel({
                       </h4>
                       <div className="mt-1 flex items-baseline gap-1.5">
                         <span className="text-sm font-bold text-foreground">
-                          ${product.price.toFixed(2)}
+                          {formatMoney(product.price, product.currency || "USD")}
                         </span>
-                        {product.currency && product.currency !== "USD" && (
-                          <span className="text-[11px] text-muted-foreground">
-                            {product.currency}
-                          </span>
-                        )}
                         {product.merchant && (
                           <span className="text-[11px] text-muted-foreground truncate">
                             via {product.merchant}

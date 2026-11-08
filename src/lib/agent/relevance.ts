@@ -77,9 +77,12 @@ export interface RelevanceCriteria {
   requiredSpecs?: Record<string, string>;
 }
 
+export type BudgetCompatibility = "COMPATIBLE" | "OVER_BUDGET" | "UNVERIFIED";
+
 export interface ScoredProduct {
   product: Product;
   score: number;
+  budgetCompatibility?: BudgetCompatibility;
 }
 
 export interface RelevanceRejection {
@@ -172,22 +175,36 @@ export function specContradiction(
   return null;
 }
 
-/** True when the product price breaks the budget beyond tolerance. */
+/**
+ * Validates budget compatibility strictly:
+ * - When currencies match: evaluates whether price is within budget (with tolerance).
+ * - When currencies differ: returns "UNVERIFIED" because foreign currencies cannot
+ *   be converted without a trusted live exchange rate. Never compares cross-currency
+ *   numbers or guesses exchange rates.
+ */
+export function checkBudgetCompatibility(
+  product: Product,
+  budget: { amount: number; currency: string } | null | undefined,
+): BudgetCompatibility {
+  if (!budget || !Number.isFinite(budget.amount) || !Number.isFinite(product.price)) {
+    return "COMPATIBLE";
+  }
+  const prodCurrency = (product.currency || "USD").toUpperCase();
+  const tgtCurrency = (budget.currency || "USD").toUpperCase();
+
+  if (prodCurrency !== tgtCurrency) {
+    return "UNVERIFIED";
+  }
+
+  return product.price > budget.amount * BUDGET_TOLERANCE ? "OVER_BUDGET" : "COMPATIBLE";
+}
+
+/** True when the product price breaks the budget beyond tolerance in the same currency. */
 export function overBudget(
   product: Product,
   budget: { amount: number; currency: string },
 ): boolean {
-  if (!Number.isFinite(product.price)) return false;
-  if (
-    budget.currency &&
-    product.currency &&
-    product.currency.toUpperCase() !== budget.currency.toUpperCase()
-  ) {
-    // Different currencies cannot be compared against the budget; treat the
-    // price as budget-compatible rather than guessing an exchange rate.
-    return false;
-  }
-  return product.price > budget.amount * BUDGET_TOLERANCE;
+  return checkBudgetCompatibility(product, budget) === "OVER_BUDGET";
 }
 
 /**
@@ -215,11 +232,15 @@ export function filterRelevant(
       continue;
     }
 
-    if (criteria.budget && overBudget(product, criteria.budget)) {
+    const budgetCompat = criteria.budget
+      ? checkBudgetCompatibility(product, criteria.budget)
+      : "COMPATIBLE";
+
+    if (budgetCompat === "OVER_BUDGET") {
       rejected.push({
         id: product.id,
         name: product.name,
-        reason: `over budget (${product.price} ${product.currency} vs ${criteria.budget.amount} ${criteria.budget.currency})`,
+        reason: `over budget (${product.price} ${product.currency} vs ${criteria.budget!.amount} ${criteria.budget!.currency})`,
       });
       continue;
     }
@@ -234,7 +255,7 @@ export function filterRelevant(
       continue;
     }
 
-    relevant.push({ product, score });
+    relevant.push({ product, score, budgetCompatibility: budgetCompat });
   }
 
   relevant.sort((a, b) => b.score - a.score);
