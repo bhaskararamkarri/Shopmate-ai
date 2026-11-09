@@ -56,7 +56,7 @@ const ORDERS_URL = `${SANDBOX_API_BASE}/v2/checkout/orders`;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 /** Demo transaction ceiling — a guard rail, not a real purchasing limit. */
-export const MAX_DEMO_TOTAL_USD = 500;
+export const MAX_DEMO_TOTAL_USD = 5_000;
 
 const MAX_TOTAL_CENTS = MAX_DEMO_TOTAL_USD * 100;
 const MAX_LINES = 20;

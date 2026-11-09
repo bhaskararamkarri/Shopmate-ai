@@ -13,7 +13,7 @@
  *   - Tier 2: Boundary & Corner Cases (>=5 tests per feature)
  *       1. Cookie tampering, expired cookies, malformed cookie syntax
  *       2. Missing secret fail-closed behavior (HTTP 503)
- *       3. Empty cart, oversized bodies, boundary amounts ($500 cap)
+ *       3. Empty cart, oversized bodies, boundary amounts ($5,000 cap)
  *       4. Rate limit burst handling, boundary expiry, and eviction
  *       5. Unknown order ID, mismatched capture token, invalid token format
  *   - Tier 3: Cross-Feature Combinations (Pairwise & Systemic Interactions)
@@ -134,7 +134,7 @@ const CABLE = makeProduct({
 });
 const EXPENSIVE = makeProduct({
   id: "demo-expensive",
-  price: 500.0,
+  price: 5000.0,
   name: "Luxury Item",
 });
 
@@ -939,7 +939,7 @@ describe("E2E Payment Security Test Suite", () => {
       });
     });
 
-    // Boundary 3: Empty cart, oversized bodies, boundary amounts ($500 cap) (5 tests)
+    // Boundary 3: Empty cart, oversized bodies, boundary amounts ($5,000 cap) (5 tests)
     describe("B3: Empty Cart, Oversized Bodies, and Boundary Amounts", () => {
       it("T2.3.1 — rejects empty cart items array with HTTP 400 empty_cart", async () => {
         const guest = createTestGuestCookie();
@@ -966,7 +966,7 @@ describe("E2E Payment Security Test Suite", () => {
         expect([400, 413]).toContain(status);
       });
 
-      it("T2.3.3 — accepts order exactly at the $500.00 demo cap limit", async () => {
+      it("T2.3.3 — accepts order exactly at the $5,000.00 demo cap limit", async () => {
         const guest = createTestGuestCookie();
         const { status, body } = await callOrdersRoute(
           { items: [{ productId: EXPENSIVE.id, quantity: 1 }] },
@@ -974,12 +974,12 @@ describe("E2E Payment Security Test Suite", () => {
         );
 
         expect(status).toBe(201);
-        expect(body.amount).toEqual({ currency: "USD", value: "500.00" });
+        expect(body.amount).toEqual({ currency: "USD", value: "5000.00" });
       });
 
-      it("T2.3.4 — rejects order exceeding the $500.00 demo cap limit with HTTP 400 amount_exceeded", async () => {
+      it("T2.3.4 — rejects order exceeding the $5,000.00 demo cap limit with HTTP 400 amount_exceeded", async () => {
         const guest = createTestGuestCookie();
-        // 1 expensive ($500) + 1 cable ($12.50) = $512.50 > $500.00
+        // 1 expensive ($5000) + 1 cable ($12.50) = $5012.50 > $5000.00
         const { status, body } = await callOrdersRoute(
           {
             items: [

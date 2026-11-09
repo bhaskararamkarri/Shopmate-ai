@@ -44,9 +44,13 @@ afterEach(() => {
   setEnv({});
 });
 
+function callConfigRoute() {
+  return GET(new Request("http://localhost/api/paypal/config"));
+}
+
 describe("GET /api/paypal/config", () => {
   it("returns only the public sandbox client id and currency", async () => {
-    const response = await GET();
+    const response = await callConfigRoute();
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
 
@@ -71,7 +75,7 @@ describe("GET /api/paypal/config", () => {
 
   it("rejects missing credentials without exposing configuration", async () => {
     setEnv({ PAYPAL_ENV: "sandbox" });
-    const response = await GET();
+    const response = await callConfigRoute();
     expect(response.status).toBe(503);
     expect(response.headers.get("cache-control")).toContain("no-store");
 
@@ -88,7 +92,7 @@ describe("GET /api/paypal/config", () => {
 
   it("rejects unsupported environments (sandbox only)", async () => {
     setEnv({ ...FAKE_CREDS, PAYPAL_ENV: "production" });
-    const response = await GET();
+    const response = await callConfigRoute();
     expect(response.status).toBe(503);
 
     const body = (await response.json()) as Record<string, unknown>;

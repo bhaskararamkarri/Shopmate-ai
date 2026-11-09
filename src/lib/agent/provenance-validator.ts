@@ -161,6 +161,9 @@ const FEATURE_STOPWORDS = new Set([
   "built-in",
   "builtin",
   "motor",
+  "equipped",
+  "featuring",
+  "including",
 ]);
 
 const GENERIC_DESCRIPTORS = new Set([
@@ -225,8 +228,13 @@ function extractCandidateFeatures(text: string): string[] {
       part = part.trim();
       // Remove trailing purpose/benefit clauses (e.g. "for quiet operation", "for convenience")
       part = part.replace(/\s+for\s+.*$/i, "").trim();
-      // Remove leading articles or qualifiers
-      part = part.replace(/^(?:a|an|the|approximately|approx\.?)\s+/i, "").trim();
+      // Remove leading articles, qualifiers, or nested trigger verbs
+      part = part
+        .replace(
+          /^(?:a|an|the|approximately|approx\.?|(?:is\s+)?equipped\s+with|comes\s+with|features?|includes?|has\s+(?:a\s+)?built-in|built-in)\s+/i,
+          "",
+        )
+        .trim();
 
       // Skip warranty claims (handled by warranty validator)
       if (/warranty|guarantee/i.test(part)) continue;

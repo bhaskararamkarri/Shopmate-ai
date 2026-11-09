@@ -235,6 +235,7 @@ export function PayPalCheckout({
   const captureInFlightRef = useRef(false);
   const capturedRef = useRef(false);
   const captureAttemptedRef = useRef(false);
+  const orderCreationErrorRef = useRef<string | null>(null);
   const captureApprovedOrderRef = useRef<(orderIdToCapture: string) => Promise<void>>(() => Promise.resolve());
 
   // Keep the latest ids/quantities available to the PayPal callbacks without
@@ -437,6 +438,7 @@ export function PayPalCheckout({
 
         submittingRef.current = true;
         captureAttemptedRef.current = false;
+        orderCreationErrorRef.current = null;
         setPhase("creating");
         setMessage("");
         setCapture(null);
@@ -460,7 +462,18 @@ export function PayPalCheckout({
           });
           const payload: unknown = await response.json().catch(() => null);
           if (!response.ok || !isOrderResponse(payload)) {
-            throw new Error("PayPal order creation failed.");
+            const serverMessage =
+              typeof payload === "object" &&
+              payload !== null &&
+              "message" in payload &&
+              typeof (payload as { message: unknown }).message === "string"
+                ? (payload as { message: string }).message
+                : null;
+            const failureMessage = serverMessage
+              ? `${serverMessage} No payment was taken. Please try again.`
+              : "We couldn't create the PayPal order. No payment was taken. Please try again.";
+            orderCreationErrorRef.current = failureMessage;
+            throw new Error(failureMessage);
           }
 
           const nextOrderId = payload.orderId.trim();
@@ -481,12 +494,15 @@ export function PayPalCheckout({
           createdOrderIdRef.current = null;
           createdReferenceIdRef.current = null;
           setPhase("error");
-          setMessage(
-            "We couldn't create the PayPal order. No payment was taken. Please try again.",
-          );
+          const displayMessage =
+            orderCreationErrorRef.current ??
+            (error instanceof Error ? error.message : null) ??
+            "We couldn't create the PayPal order. No payment was taken. Please try again.";
+          orderCreationErrorRef.current = displayMessage;
+          setMessage(displayMessage);
           throw error instanceof Error
             ? error
-            : new Error("PayPal order creation failed.");
+            : new Error(displayMessage);
         }
       },
       onApprove: (data) => captureApprovedOrderRef.current(data.orderID),
@@ -500,6 +516,7 @@ export function PayPalCheckout({
         }
         submittingRef.current = false;
         approvedRef.current = false;
+        orderCreationErrorRef.current = null;
         captureTokenRef.current = null;
         createdOrderIdRef.current = null;
         createdReferenceIdRef.current = null;
@@ -527,9 +544,13 @@ export function PayPalCheckout({
         createdReferenceIdRef.current = null;
         idempotencyKeyRef.current = createCheckoutKey();
         setPhase("error");
-        setMessage(
-          "The PayPal checkout couldn't be completed. No payment was taken. Please try again.",
-        );
+        if (orderCreationErrorRef.current) {
+          setMessage(orderCreationErrorRef.current);
+        } else {
+          setMessage(
+            "The PayPal checkout couldn't be completed. No payment was taken. Please try again.",
+          );
+        }
       },
       onClick: (_data, actions) => {
         if (

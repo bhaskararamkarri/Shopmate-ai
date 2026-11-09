@@ -281,6 +281,38 @@ describe("PayPalCheckout — order creation", () => {
     expect(screen.getByText(/no payment was taken/i)).toBeTruthy();
   });
 
+  it("preserves specific backend error message when createOrder fails and onError fires", async () => {
+    installFetch({
+      order: () =>
+        jsonResponse(
+          {
+            success: false,
+            error: "amount_too_large",
+            message: "Demo orders are capped at $5,000.",
+          },
+          400,
+        ),
+    });
+    const fake = installFakeSdk();
+    vi.mocked(loadPayPalSdk).mockResolvedValue(fake.sdk);
+
+    await renderCheckout();
+
+    await act(async () => {
+      try {
+        await fake.configs[0]!.createOrder();
+      } catch (err) {
+        fake.configs[0]!.onError?.(err);
+      }
+    });
+
+    expect(screen.getByText(/Demo orders are capped at \$5,000\./i)).toBeTruthy();
+    expect(screen.getByText(/no payment was taken/i)).toBeTruthy();
+    expect(
+      screen.queryByText(/The PayPal checkout couldn't be completed\./i),
+    ).toBeNull();
+  });
+
   it("prevents duplicate order submissions", async () => {
     const calls = installFetch();
     const fake = installFakeSdk();

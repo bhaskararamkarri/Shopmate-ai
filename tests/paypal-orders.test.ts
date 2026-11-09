@@ -373,11 +373,30 @@ describe("createPayPalOrder — validation", () => {
     const { status, body } = await postRoute({
       items: [{ productId: HEADPHONES.id, quantity: Math.min(quantity, 99) }],
     });
-    // 99 * 199.99 > 500 — rejected before any PayPal call.
     expect(quantity).toBeGreaterThan(2);
     expect(status).toBe(400);
     expect(body).toMatchObject({ success: false, error: "amount_too_large" });
     expect(orderCalls(calls)).toHaveLength(0);
+  });
+
+  it("accepts an $849.99 single appliance order without hitting the amount cap", async () => {
+    const calls = installPayPalFetch();
+    vi.mocked(getCatalogProduct).mockImplementation(async () => ({
+      product: product({ id: "live-washer-849", price: 849.99, name: "Smart Front Load Washer" }),
+      source: "channel3" as const,
+    }));
+
+    const { status, body } = await postRoute({
+      items: [{ productId: "live-washer-849", quantity: 1 }],
+    });
+    expect(status).toBe(201);
+    expect(body).toMatchObject({
+      success: true,
+      amount: { currency: "USD", value: "849.99" },
+    });
+    expect(orderCalls(calls)).toHaveLength(1);
+    const orderPayload = JSON.parse(orderCalls(calls)[0]!.init?.body as string);
+    expect(orderPayload.purchase_units[0].amount.value).toBe("849.99");
   });
 
   it("rejects unsupported request and product currencies", async () => {

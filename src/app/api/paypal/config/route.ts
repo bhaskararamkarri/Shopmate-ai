@@ -12,7 +12,7 @@ import { connection, NextResponse } from "next/server";
 import { getPayPalConfig } from "@/lib/paypal/auth";
 import { getOrIssueGuestSession } from "@/lib/payments/guest-session";
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   // Configuration is read at request time so a deployment never serves a
   // Client ID captured during the build. `connection()` is the supported
   // opt-out under this app's cacheComponents configuration.
@@ -34,8 +34,7 @@ export async function GET(request?: Request) {
 
   const headers: Record<string, string> = { "Cache-Control": "no-store" };
   try {
-    const req = request ?? new Request("http://localhost/api/paypal/config");
-    const session = getOrIssueGuestSession(req);
+    const session = getOrIssueGuestSession(request);
     if (session.setCookie) {
       headers["Set-Cookie"] = session.setCookie;
     }
