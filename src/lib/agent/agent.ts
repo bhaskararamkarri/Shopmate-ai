@@ -465,7 +465,7 @@ export async function runAgentTurn(
         tools,
         stopWhen: ({ steps }) => steps.length >= MAX_STEPS,
         maxRetries: 0,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 800,
       });
 
       const result = await agent.generate({

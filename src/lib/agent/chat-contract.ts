@@ -12,7 +12,7 @@ import { IntentSchema, type ShoppingIntent } from "./intent";
 /** Request and history bounds — deliberate, modest ceilings. */
 export const CHAT_LIMITS = {
   maxHistoryMessages: 16,
-  maxHistoryMessageLength: 2000,
+  maxHistoryMessageLength: 4000,
   maxMessageLength: 1000,
   maxConversationIdLength: 64,
 } as const;

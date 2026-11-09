@@ -112,8 +112,8 @@ export function isFailoverEligibleError(error: unknown, depth = 0): boolean {
 
   const status = extractErrorStatus(error, depth);
   if (typeof status === "number") {
-    // 401/403: Provider credential failure / unauthorized (fail over to next provider)
-    if (status === 401 || status === 403) return true;
+    // 401/402/403: Provider credential / credit / quota failure (fail over to next provider)
+    if (status === 401 || status === 402 || status === 403) return true;
     // 404: Model not found or deprecated on this provider
     if (status === 404) return true;
     // 429: Rate-limit or quota exceeded (Google, Cerebras, Groq, OpenRouter)

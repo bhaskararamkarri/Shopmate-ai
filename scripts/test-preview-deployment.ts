@@ -1,3 +1,5 @@
+export {};
+
 const PREVIEW_URL = "https://shopmate-4mb6gvmld-bhaskararamkarris-projects.vercel.app";
 
 interface ChatTurnResponse {

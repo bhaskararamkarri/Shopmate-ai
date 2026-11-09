@@ -8,7 +8,7 @@
 
 /** History window sent with each turn — matches the server's validation bound. */
 export const MAX_HISTORY = 16;
-export const MAX_HISTORY_ITEM_LENGTH = 2000;
+export const MAX_HISTORY_ITEM_LENGTH = 4000;
 
 interface HistorySource {
   role: string;
