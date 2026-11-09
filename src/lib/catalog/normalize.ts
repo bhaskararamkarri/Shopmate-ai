@@ -42,7 +42,7 @@ export interface CapacitySpec {
 }
 
 /** Parses capacity number and unit from text without guessing unrelated numbers. */
-function parseCapacityString(text: string): CapacitySpec | null {
+export function parseCapacityString(text: string): CapacitySpec | null {
   // 1. Cubic feet check (e.g. "3.0 cu. ft.", "1.3 cu. ft. capacity", "3.0 cubic foot")
   const cuFtMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:cu\.?\s*ft\.?|cubic\s*f(?:ee|oo)t\b)/i);
   if (cuFtMatch) {
@@ -133,6 +133,16 @@ export function extractApplianceCapacity(raw: unknown): CapacitySpec | null {
     for (const feat of raw.key_features) {
       if (typeof feat === "string" && /capacity|load|drum|tub|cu\.?\s*ft|lbs?|kg/i.test(feat)) {
         const parsed = parseCapacityString(feat);
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  // Priority 2.5: Normalized specs record (when raw is a Product object)
+  if (isRecord(raw.specs)) {
+    for (const [key, val] of Object.entries(raw.specs)) {
+      if (typeof val === "string" && /capacity|tub|drum|load/i.test(key)) {
+        const parsed = parseCapacityString(val);
         if (parsed) return parsed;
       }
     }

@@ -22,6 +22,7 @@
 import type { Product, ProductRecommendationInsight } from "@/types";
 import type { RankedProduct } from "./ranking";
 import type { ShoppingIntent } from "./intent";
+import { extractApplianceCapacity } from "@/lib/catalog/normalize";
 
 /** Checks if text contains a search keyword/phrase case-insensitively. */
 function textContains(text: string | undefined, keyword: string): boolean {
@@ -132,9 +133,12 @@ function evaluateFailures(
       textContains(product.description, "twin tub") ||
       textContains(product.description, "compact spaces");
 
+    const capacitySpec = extractApplianceCapacity(product);
     const specKeys = Object.keys(product.specs || {});
     const capacityKey = specKeys.find((k) => /capacity|tub|drum|load/i.test(k));
-    const hasCapacitySpec = Boolean(capacityKey && product.specs?.[capacityKey]?.trim());
+    const hasCapacitySpec = Boolean(
+      capacitySpec || (capacityKey && product.specs?.[capacityKey]?.trim()),
+    );
 
     if (isCompactOrPortable) {
       failures.push(
@@ -143,6 +147,10 @@ function evaluateFailures(
     } else if (!hasCapacitySpec) {
       failures.push(
         "Washing load capacity is unknown in catalog specs; unverified for a family of 4",
+      );
+    } else if (capacitySpec && capacitySpec.unit === "kg" && capacitySpec.value < 7) {
+      failures.push(
+        `Rated capacity of ${capacitySpec.normalizedDisplay} is undersized for a typical family of 4 (minimum 7–8 kg recommended)`,
       );
     }
   }
