@@ -16,6 +16,8 @@ export interface SendChatInput {
   message: string;
   /** Intent accumulated so far, sent back to keep context across turns. */
   intent?: ShoppingIntentSummary | ChatRequest["intent"];
+  /** Product IDs recently shortlisted or discussed in this conversation. */
+  contextProductIds?: string[];
   signal?: AbortSignal;
 }
 
@@ -30,6 +32,9 @@ export async function sendChatMessage(input: SendChatInput): Promise<ChatApiResp
         history: input.history,
         message: input.message,
         ...(input.intent ? { intent: input.intent } : {}),
+        ...(input.contextProductIds && input.contextProductIds.length > 0
+          ? { contextProductIds: input.contextProductIds }
+          : {}),
       }),
       signal: input.signal,
     });

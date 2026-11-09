@@ -31,6 +31,129 @@ import { isSafeHttpUrl } from "./url";
 export type { CatalogSearchOptions };
 
 /* ------------------------------------------------------------------ */
+/* Appliance Capacity Normalization (Phase 9.2)                        */
+/* ------------------------------------------------------------------ */
+
+export interface CapacitySpec {
+  value: number;
+  unit: "kg" | "lbs" | "cu_ft";
+  raw: string;
+  normalizedDisplay: string;
+}
+
+/** Parses capacity number and unit from text without guessing unrelated numbers. */
+function parseCapacityString(text: string): CapacitySpec | null {
+  // 1. Cubic feet check (e.g. "3.0 cu. ft.", "1.3 cu. ft. capacity", "3.0 cubic foot")
+  const cuFtMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:cu\.?\s*ft\.?|cubic\s*f(?:ee|oo)t\b)/i);
+  if (cuFtMatch) {
+    const val = Number(cuFtMatch[1]);
+    if (Number.isFinite(val) && val > 0 && val < 20) {
+      return {
+        value: val,
+        unit: "cu_ft",
+        raw: cuFtMatch[0].trim(),
+        normalizedDisplay: `${val} cu ft`,
+      };
+    }
+  }
+
+  // 2. Kilograms check (e.g. "8 Kg", "8kg", "9 kg capacity")
+  const kgMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilograms?)\b/i);
+  if (kgMatch) {
+    const val = Number(kgMatch[1]);
+    if (Number.isFinite(val) && val > 0 && val < 50) {
+      return {
+        value: val,
+        unit: "kg",
+        raw: kgMatch[0].trim(),
+        normalizedDisplay: `${val} kg`,
+      };
+    }
+  }
+
+  // 3. Pounds check (e.g. "7.7 lbs", "26.5 lbs")
+  const lbsMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)\b/i);
+  if (lbsMatch) {
+    const val = Number(lbsMatch[1]);
+    if (Number.isFinite(val) && val > 0 && val < 100) {
+      return {
+        value: val,
+        unit: "lbs",
+        raw: lbsMatch[0].trim(),
+        normalizedDisplay: `${val} lbs`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extracts washing-machine or laundry capacity from verified catalog fields:
+ * structured attributes, key features, title, or description.
+ * Non-appliances or ambiguous/missing values strictly return null (UNKNOWN).
+ */
+export function extractApplianceCapacity(raw: unknown): CapacitySpec | null {
+  if (!isRecord(raw)) return null;
+
+  const catTitle = isRecord(raw.category)
+    ? asString(raw.category.title, 120)
+    : asString(raw.category, 120);
+  const title =
+    asString(raw.title, MAX_TITLE_CHARS) ??
+    asString(raw.name, MAX_TITLE_CHARS) ??
+    "";
+  const desc = asString(raw.description, MAX_DESCRIPTION_CHARS) ?? "";
+  const combined = `${catTitle ?? ""} ${title} ${desc}`.toLowerCase();
+
+  const isAppliance =
+    combined.includes("washing") ||
+    combined.includes("washer") ||
+    combined.includes("laundry") ||
+    combined.includes("dryer");
+
+  if (!isAppliance) return null;
+
+  // Priority 1: Structured attributes
+  if (isRecord(raw.structured_attributes)) {
+    for (const [key, values] of Object.entries(raw.structured_attributes)) {
+      if (/capacity|tub|drum|load/i.test(key) && Array.isArray(values)) {
+        for (const val of values) {
+          if (typeof val === "string") {
+            const parsed = parseCapacityString(val);
+            if (parsed) return parsed;
+          }
+        }
+      }
+    }
+  }
+
+  // Priority 2: Key features
+  if (Array.isArray(raw.key_features)) {
+    for (const feat of raw.key_features) {
+      if (typeof feat === "string" && /capacity|load|drum|tub|cu\.?\s*ft|lbs?|kg/i.test(feat)) {
+        const parsed = parseCapacityString(feat);
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  // Priority 3: Title
+  if (title) {
+    const parsed = parseCapacityString(title);
+    if (parsed) return parsed;
+  }
+
+  // Priority 4: Description
+  if (desc) {
+    const parsed = parseCapacityString(desc);
+    if (parsed) return parsed;
+  }
+
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Small validation helpers                                            */
 /* ------------------------------------------------------------------ */
 
@@ -200,6 +323,12 @@ function normalizeStringList(values: unknown, label: string): [string, string] |
  */
 function normalizeSpecs(product: Record<string, unknown>): Record<string, string> {
   const specs = normalizeStructuredAttributes(product.structured_attributes);
+
+  // Extract verified appliance capacity if present
+  const applianceCapacity = extractApplianceCapacity(product);
+  if (applianceCapacity && specs["Capacity"] === undefined) {
+    specs["Capacity"] = applianceCapacity.normalizedDisplay;
+  }
 
   const extras: Array<[string, string] | null> = [
     normalizeStringList(product.materials, "Material"),

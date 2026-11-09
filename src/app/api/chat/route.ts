@@ -117,9 +117,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await runAgentTurn({
+      conversationId: parsed.data.conversationId,
       history: parsed.data.history,
       message: parsed.data.message,
       intent: parsed.data.intent,
+      contextProductIds: parsed.data.contextProductIds,
       userId,
     });
     return NextResponse.json(result);

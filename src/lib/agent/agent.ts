@@ -38,6 +38,11 @@ import {
 } from "./failover";
 import { getCatalogProduct, searchCatalog } from "@/lib/catalog/provider";
 import type { ChatApiSuccess, ChatComparison } from "./chat-contract";
+import {
+  resolveConversationContext,
+  saveConversationProducts,
+} from "./conversation-context";
+import { validateResponseProvenance } from "./provenance-validator";
 
 /** Max products attached to a reply — matches the UI's result list. */
 const MAX_PRODUCTS = 6;
@@ -74,6 +79,10 @@ export interface RunAgentTurnInput {
   userId?: string;
   /** Intent accumulated over the conversation, seeded by the client. */
   intent?: ShoppingIntent;
+  /** Conversation ID for multi-turn server context tracking */
+  conversationId?: string;
+  /** Client-provided recent product IDs to validate and restore */
+  contextProductIds?: string[];
 }
 
 export interface RunAgentTurnDeps {
@@ -165,11 +174,29 @@ export function assembleTurn(input: {
   query: string;
   mode: "ai" | "keyword_fallback";
   model?: string;
+  conversationId?: string;
 }): ChatApiSuccess {
   const { intent, catalogLog } = input;
 
-  // Allow-list: only ids the tools actually returned can be recommended.
-  const recommended = input.recommendedIds.filter((id) => catalogLog.has(id));
+  // 1. Validate response provenance against catalogLog
+  const validation = validateResponseProvenance(input.content, catalogLog);
+
+  let rawContent = input.content?.trim();
+  if (!validation.valid) {
+    console.warn(
+      "[/api/chat] response failed provenance validation; reverting to grounded summary:",
+      validation.violations,
+    );
+    rawContent = "";
+  }
+
+  // 2. Allow-list: only ids the tools/context actually returned can be recommended.
+  // Prepend validated referenced IDs so UI shortlist matches items cited by AI
+  const combinedRecommendedIds = [
+    ...validation.referencedProductIds,
+    ...input.recommendedIds,
+  ];
+  const recommended = combinedRecommendedIds.filter((id) => catalogLog.has(id));
 
   // Deduplicate candidate IDs to ensure ranking stability and no duplicate products
   const candidateIds = Array.from(
@@ -192,6 +219,11 @@ export function assembleTurn(input: {
   const productIds = products.map((p) => p.id);
   const recommendations = generateRecommendations(topRanked, intent);
 
+  // If we have an active conversation, save verified products to conversation state
+  if (input.conversationId && products.length > 0) {
+    saveConversationProducts(input.conversationId, products);
+  }
+
   const comparisons: ChatComparison[] = input.comparisons.map((group) => ({
     productIds: group.productIds.filter((id) => catalogLog.has(id)),
     products: group.productIds
@@ -201,7 +233,6 @@ export function assembleTurn(input: {
     missingIds: group.missingIds,
   }));
 
-  const rawContent = input.content?.trim();
   const content =
     rawContent &&
     rawContent !== "I could not compose a reply this time — try rephrasing."
@@ -308,6 +339,12 @@ export async function runKeywordFallbackTurn(
   const query = normalizeQuery(input.message);
   const outcome = await catalog.search(query, { limit: 10, userId: input.userId });
 
+  const { trustedProducts } = await resolveConversationContext({
+    conversationId: input.conversationId,
+    clientProductIds: input.contextProductIds,
+    catalog,
+  });
+
   const budgetHint = parseBudgetHint(input.message);
   const { relevant, rejected, suggestion } = tokenize(query).length
     ? // Relevance gate with no intent yet — the message (plus any explicit
@@ -319,6 +356,9 @@ export async function runKeywordFallbackTurn(
     : { relevant: [], rejected: [], suggestion: undefined };
 
   const catalogLog = new Map(relevant.map((r) => [r.product.id, r.product]));
+  for (const [id, prod] of trustedProducts.entries()) {
+    catalogLog.set(id, prod);
+  }
 
   const intro = relevant.length
     ? `AI assistance isn't configured right now, so I ran a keyword search for “${query}” on the ${outcome.source === "demo" ? "demo catalog" : "live catalog"}.${budgetHint ? ` Results are filtered to your ${budgetHint.amount} ${budgetHint.currency} budget.` : ""} These are straight keyword matches, ranked deterministically — not AI-picked recommendations:`
@@ -346,6 +386,7 @@ export async function runKeywordFallbackTurn(
     toolsUsed: [],
     query,
     mode: "keyword_fallback",
+    conversationId: input.conversationId,
   });
 }
 
@@ -368,6 +409,13 @@ export async function runAgentTurn(
   if (candidates.length === 0) {
     return runKeywordFallbackTurn(input, catalog);
   }
+
+  // Resolve trusted server context and validate client-supplied product IDs
+  const { trustedProducts } = await resolveConversationContext({
+    conversationId: input.conversationId,
+    clientProductIds: input.contextProductIds,
+    catalog,
+  });
 
   const budgetHint = parseBudgetHint(input.message);
   const baseIntent = input.intent ? { ...input.intent } : emptyIntent();
@@ -398,6 +446,10 @@ export async function runAgentTurn(
       // Fresh isolated context per provider attempt to prevent partial side effects
       const intentRef = { current: { ...baseIntent } };
       const ctx = createContext(catalog, intentRef, input.userId);
+      // Pre-seed catalogLog with trusted products from earlier turns in the conversation
+      for (const [id, prod] of trustedProducts.entries()) {
+        ctx.catalogLog.set(id, prod);
+      }
       const allTools = createAgentTools(ctx);
       const tools = {
         searchProducts: allTools.searchProducts,
@@ -445,6 +497,7 @@ export async function runAgentTurn(
         query: input.message,
         mode: "ai",
         model: candidate.modelId,
+        conversationId: input.conversationId,
       });
     });
 

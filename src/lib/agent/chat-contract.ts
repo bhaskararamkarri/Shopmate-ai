@@ -37,6 +37,8 @@ export const ChatRequestSchema = z.object({
   message: z.string().trim().min(1).max(CHAT_LIMITS.maxMessageLength),
   /** Intent accumulated so far, sent back by the client to keep context. */
   intent: IntentSchema.optional(),
+  /** Product IDs recently discussed or shortlisted in this conversation. */
+  contextProductIds: z.array(z.string().min(1).max(128)).max(32).optional(),
 });
 
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;

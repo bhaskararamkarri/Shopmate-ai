@@ -140,6 +140,14 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     const lastIntentMsg = [...currentSnapshot].reverse().find((m) => m.role === "assistant" && m.intent);
     const intentToSend = lastIntentMsg?.intent ?? undefined;
 
+    const recentProductIds = Array.from(
+      new Set(
+        currentSnapshot
+          .flatMap((m) => (m.products || []).map((p) => p.id))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ).slice(-16);
+
     const history = buildHistory(currentSnapshot);
     chatStore.append({
       id: newMessageId(),
@@ -156,6 +164,7 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
         history,
         message: query,
         intent: intentToSend,
+        contextProductIds: recentProductIds,
         signal: controller.signal,
       });
     } catch {

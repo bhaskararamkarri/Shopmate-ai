@@ -404,9 +404,21 @@ export function generateRecommendations(
         `Budget compatibility: UNVERIFIED (Price is in ${prodCurrency}; conversion to ${targetCurrency} requires live exchange rate)`,
       );
     }
-    if (targetCurrency === "INR" && prodCurrency === "USD") {
+
+    const isOverseas = Boolean(
+      product.merchant &&
+      (product.merchant.endsWith(".it") ||
+        product.merchant.endsWith(".de") ||
+        product.merchant.endsWith(".eu") ||
+        product.merchant.endsWith(".uk") ||
+        product.merchant.endsWith(".ca") ||
+        product.merchant.includes("mohd")),
+    );
+
+    if (isOverseas || (targetCurrency === "INR" && prodCurrency === "USD")) {
+      const merchantTag = product.merchant ? ` via ${product.merchant}` : "";
       missingOrUnverified.push(
-        "International US merchant listing; domestic delivery in India, warranty, and customs unverified",
+        `International merchant offer${merchantTag}: domestic delivery in India, customs duties, international shipping, and electrical voltage compatibility are UNKNOWN`,
       );
     }
 
