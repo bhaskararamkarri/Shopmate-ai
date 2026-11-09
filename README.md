@@ -4,7 +4,7 @@
 
 ShopMate AI transforms online shopping from tedious browsing into an evidence-grounded decision workspace. Users can specify natural-language constraints, budgets, and priorities, receive transparent recommendations that never invent specifications or reviews, compare shortlisted products side by side, and complete verified checkouts via PayPal Sandbox.
 
-**Hosted Preview:** [https://shopmate-q7pulvitk-bhaskararamkarris-projects.vercel.app](https://shopmate-q7pulvitk-bhaskararamkarris-projects.vercel.app)
+**Hosted Preview:** [https://shopmate-54pwk0h6d-bhaskararamkarris-projects.vercel.app](https://shopmate-54pwk0h6d-bhaskararamkarris-projects.vercel.app)
 
 ---
 
@@ -16,7 +16,7 @@ ShopMate AI transforms online shopping from tedious browsing into an evidence-gr
 - **Dual Catalog Architecture**: Live product feeds via the Channel3 Product API alongside curated, labeled demo items with high-resolution photography and explicit provenance badges (`DEMO DATA` vs live merchant records).
 - **Server-Verified PayPal Sandbox Checkout (`/cart`)**: Complete approval-to-capture PayPal Orders v2 integration with server-side repricing, integer-cent verification, deterministic HMAC capture capabilities, and serverless state reconciliation.
 - **Durable Payment Architecture (Phase 6B & 6C)**: PostgreSQL storage with transactional idempotency leases, state-machine transition integrity, and cryptographically signed guest session cookies.
-- **Comprehensive Test Coverage**: 427 automated Vitest tests covering multi-provider failover, end-to-end security, state machine transitions, recommendation integrity, and catalog fallbacks.
+- **Comprehensive Test Coverage**: 497 automated Vitest tests covering multi-provider failover, end-to-end security, state machine transitions, recommendation integrity, and catalog fallbacks.
 
 ---
 
