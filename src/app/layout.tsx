@@ -32,7 +32,10 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "https://shopmate-ai.vercel.app",
+    process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : "https://shopmate-ai-sigma.vercel.app"),
   ),
   title: {
     default: "ShopMate AI — Shop smarter. Compare better. Buy with confidence.",

@@ -13,10 +13,18 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+vi.mock("next/font/google", () => ({
+  Geist: () => ({ variable: "--font-geist-sans" }),
+  Geist_Mono: () => ({ variable: "--font-geist-mono" }),
+  Instrument_Serif: () => ({ variable: "--font-instrument" }),
+  Inter: () => ({ variable: "--font-inter" }),
+}));
+
 import { ShopProvider, useShop } from "@/lib/store";
 import { Navbar } from "@/components/shop/navbar";
 import { MobileBottomNav } from "@/components/shop/mobile-bottom-nav";
 import { Footer } from "@/components/shop/footer";
+import { metadata } from "@/app/layout";
 
 beforeEach(() => {
   mockPathname = "/";
@@ -129,6 +137,10 @@ describe("Stitch Global Chrome & Receipt Shell", () => {
       expect(href.startsWith("/")).toBe(true);
       expect(href).not.toBe("#");
     }
+  });
+
+  it("uses the active Vercel production domain as metadataBase fallback", () => {
+    expect(metadata.metadataBase?.toString()).toBe("https://shopmate-ai-sigma.vercel.app/");
   });
 });
 

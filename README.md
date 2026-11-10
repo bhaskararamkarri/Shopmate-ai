@@ -4,31 +4,45 @@
 
 ShopMate AI transforms online shopping from tedious browsing into an evidence-grounded decision workspace. Users can specify natural-language constraints, budgets, and priorities, receive transparent recommendations that never invent specifications or reviews, compare shortlisted products side by side, and complete verified checkouts via PayPal Sandbox.
 
-**Hosted Preview:** [https://shopmate-pa8ufnb1f-bhaskararamkarris-projects.vercel.app](https://shopmate-pa8ufnb1f-bhaskararamkarris-projects.vercel.app)
+## Live Deployments & Links
+
+- **Live Production (Vercel):** [https://shopmate-ai-sigma.vercel.app](https://shopmate-ai-sigma.vercel.app)
+- **Production Alias (Vercel):** [https://shopmate-ai-bhaskararamkarris-projects.vercel.app](https://shopmate-ai-bhaskararamkarris-projects.vercel.app)
+- **Main Branch Deployment (Vercel Git):** [https://shopmate-ai-git-main-bhaskararamkarris-projects.vercel.app](https://shopmate-ai-git-main-bhaskararamkarris-projects.vercel.app)
+- **GitHub Repository:** [https://github.com/bhaskararamkarri/Shopmate-ai](https://github.com/bhaskararamkarri/Shopmate-ai)
+
+### Live Routes
+
+- **Home / Discovery & AI Catalog (`/`):** [https://shopmate-ai-sigma.vercel.app/](https://shopmate-ai-sigma.vercel.app/)
+- **AI Shopping Workspace (`/chat`):** [https://shopmate-ai-sigma.vercel.app/chat](https://shopmate-ai-sigma.vercel.app/chat)
+- **Product Comparison Matrix (`/compare`):** [https://shopmate-ai-sigma.vercel.app/compare](https://shopmate-ai-sigma.vercel.app/compare)
+- **Shopping Cart & PayPal Checkout (`/cart`):** [https://shopmate-ai-sigma.vercel.app/cart](https://shopmate-ai-sigma.vercel.app/cart)
 
 ---
 
 ## Key Capabilities
 
-- **Intelligent Shopping Decision Workspace (`/chat`)**: Multi-turn AI shopping agent with requirement tracking, adaptive budget refinement, and grounded shortlist generation.
+- **Exact Stitch Design System & Responsive Chrome**: Consistent editorial precision UI across Desktop (`1440px`), Tablet (`768px`), and Mobile (`390px`) with sticky navigation, mobile bottom bar, sliding Comparison Drawer, and full-detail Product Analysis Drawer.
+- **Home / Product Discovery (`/`)**: Live & curated dual catalog browsing, category quick filters, conversational hero search, verified on-sale percentage badges, and one-click Compare / Add-to-Cart actions.
+- **Intelligent Shopping Decision Workspace (`/chat`)**: 2-column desktop workspace (`300px` live requirement/constraint sidebar + message canvas), mobile `Chat | Context | Shortlist` tabs, adaptive budget refinement, and structured synthesis cards.
 - **Resilient Multi-Provider AI Architecture (Phase 8)**: Automatic sequential failover across Google Gemini (primary), Cerebras Inference (secondary), Groq (tertiary), and OpenRouter (fallback), eliminating single-provider outages and rate limits.
-- **Evidence-Grounded Product Comparison (`/compare`)**: Side-by-side specification tables highlighting meaningful differences, verified trade-offs, and explicit unknown/missing attribute detection.
+- **Evidence-Grounded Product Comparison (`/compare`)**: Categorized side-by-side specification tables with normalized unit comparisons (`hrs`/`m`, power, etc.), sticky verdict deck (`Best Overall` & `Value Pick`), and explicit unknown/missing attribute transparency.
 - **Dual Catalog Architecture**: Live product feeds via the Channel3 Product API alongside curated, labeled demo items with high-resolution photography and explicit provenance badges (`DEMO DATA` vs live merchant records).
-- **Server-Verified PayPal Sandbox Checkout (`/cart`)**: Complete approval-to-capture PayPal Orders v2 integration with server-side repricing, integer-cent verification, deterministic HMAC capture capabilities, and serverless state reconciliation.
-- **Durable Payment Architecture (Phase 6B & 6C)**: PostgreSQL storage with transactional idempotency leases, state-machine transition integrity, and cryptographically signed guest session cookies.
-- **Comprehensive Test Coverage**: 497 automated Vitest tests covering multi-provider failover, end-to-end security, state machine transitions, recommendation integrity, and catalog fallbacks.
+- **Server-Verified PayPal Sandbox Checkout (`/cart`)**: Complete approval-to-capture PayPal Orders v2 integration with server-side repricing, integer-cent verification, deterministic HMAC capture capabilities, serverless state reconciliation, and session-persisted Checkout Confirmation receipts.
+- **Durable Payment Architecture (Phase 6B, 6C & 7)**: PostgreSQL storage with transactional idempotency leases, state-machine transition integrity, and cryptographically signed guest session cookies.
+- **Comprehensive Automated Test & Browser QA Coverage**: 48 passing Vitest suites (`522` passing tests across unit, security, state machine, recommendation integrity, and UI contracts, plus optional gated Postgres & live-provider suites) and automated Puppeteer Chromium multi-viewport visual QA scripts.
 
 ---
 
 ## Tech Stack
 
-- **Framework**: [Next.js 16](https://nextjs.org/) (App Router, Turbopack, Partial Prerendering)
-- **UI & Styling**: React 19, [Tailwind CSS v4](https://tailwindcss.com/), Radix UI primitives, Lucide Icons
-- **AI & Multi-Provider Architecture**: AI SDK (`ai`), Google Gemini (`@ai-sdk/google`), Cerebras Inference, Groq, OpenRouter (`@ai-sdk/openai-compatible`)
+- **Framework**: [Next.js 16](https://nextjs.org/) (App Router, Turbopack)
+- **UI & Styling**: React 19, [Tailwind CSS v4](https://tailwindcss.com/), Radix UI primitives, Lucide Icons, Material Symbols
+- **AI & Multi-Provider Architecture**: AI SDK (`ai`), Google Gemini (`@ai-sdk/google`), Cerebras Inference, Groq, OpenRouter (`@ai-sdk/openai-compatible`), Zod
 - **Payments**: PayPal Orders v2 REST API, PayPal JavaScript SDK (Sandbox)
 - **Database**: PostgreSQL (Supabase), Row-Level Security, custom SQL migration triggers
 - **Catalog**: Channel3 Product API + curated local demo catalog
-- **Testing**: Vitest, React Testing Library, jsdom
+- **Testing & QA**: Vitest, React Testing Library, jsdom, Puppeteer (`puppeteer-core`) Chromium multi-viewport verification
 
 ---
 
