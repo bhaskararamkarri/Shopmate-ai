@@ -125,4 +125,23 @@ describe("Stitch AI Shopping Workspace (/chat)", () => {
       }),
     ).toBeDefined();
   });
+
+  it("keeps workspace badge single-line and uses non-clipping min-h-full centering on welcome card", () => {
+    render(
+      <ShopProvider>
+        <ChatClient />
+      </ShopProvider>,
+    );
+    const workspaceBadge = screen.getByText(/SHOPMATE WORKSPACE/i).closest("span.rounded-full");
+    expect(workspaceBadge?.className).toContain("whitespace-nowrap");
+
+    const copilotHeading = screen.getByRole("heading", {
+      name: /ShopMate Research Copilot/i,
+    });
+    const innerCard = copilotHeading.closest("div.max-w-2xl");
+    expect(innerCard?.className).toContain("my-auto");
+    expect(innerCard?.parentElement?.className).toContain("min-h-full");
+    expect(innerCard?.parentElement?.className.split(/\s+/)).not.toContain("h-full");
+  });
 });
+

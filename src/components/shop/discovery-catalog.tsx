@@ -130,7 +130,7 @@ export function DiscoveryCatalog({
                   onClick={() => setSelectedCategory(cat.key)}
                   aria-pressed={active}
                   className={cn(
-                    "group flex min-w-[138px] flex-1 items-center gap-3 rounded-xl p-3 text-left transition-all",
+                    "group flex min-w-[152px] shrink-0 flex-1 items-center gap-3 rounded-xl p-3 text-left transition-all sm:min-w-[144px]",
                     active
                       ? "stitch-tier-1 border border-primary/35 bg-surface-card ring-1 ring-primary/15"
                       : "stitch-tier-1 border border-border-subtle bg-surface-card hover:bg-surface-container-low",

@@ -235,7 +235,7 @@ export function ProductCard({ product }: { product: Product }) {
             {comparing ? (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden w-56 rounded-xl border border-white/10 bg-brand-deep-indigo/95 p-2.5 text-left text-xs text-white opacity-0 shadow-2xl backdrop-blur-md transition-opacity duration-200 sm:block sm:group-hover/cmp:opacity-100"
+                className="pointer-events-none absolute bottom-full left-0 z-40 mb-2 hidden w-56 rounded-xl border border-white/15 bg-brand-deep-indigo p-2.5 text-left text-xs text-white opacity-0 shadow-2xl transition-opacity duration-150 sm:block sm:group-hover/cmp:opacity-100"
               >
                 <div className="mb-0.5 flex items-center gap-1.5 font-semibold text-secondary-fixed">
                   <span className="material-symbols-outlined text-[15px]">

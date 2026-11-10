@@ -100,12 +100,18 @@ describe("Stitch Global Chrome & Receipt Shell", () => {
     expect(screen.getByRole("navigation", { name: /mobile bottom/i })).toBeDefined();
   });
 
-  it("opens mobile quick search drawer and submits query to /chat", () => {
+  it("renders untruncated compact mobile ShopMate brand label and opens quick search drawer", () => {
     render(
       <ShopProvider>
         <Navbar />
       </ShopProvider>,
     );
+    const mobileBrandText = screen
+      .getAllByText(/^ShopMate$/i)
+      .find((el) => el.closest("div.lg\\:hidden"));
+    expect(mobileBrandText).toBeDefined();
+    expect(mobileBrandText?.className).toContain("whitespace-nowrap");
+
     const openBtn = screen.getByRole("button", { name: /open quick search/i });
     fireEvent.click(openBtn);
     const input = screen.getByLabelText(/ask shopmate ai/i);
@@ -125,3 +131,4 @@ describe("Stitch Global Chrome & Receipt Shell", () => {
     }
   });
 });
+

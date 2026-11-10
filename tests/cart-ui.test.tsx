@@ -107,6 +107,10 @@ describe("Stitch Cart & Confirmation UI (/cart)", () => {
     expect(screen.getByText("ORD-VERIFIED-7")).toBeDefined();
     expect(screen.getByText("CAP-VERIFIED-9")).toBeDefined();
     expect(screen.queryByText(/Sandbox Fallback Testing/i)).toBeNull();
+    const sandboxNote = screen.getByText(
+      /PayPal Testnet active · No real monetary funds deducted/i,
+    );
+    expect(sandboxNote.className).not.toContain("truncate");
 
     fireEvent.click(screen.getByRole("button", { name: /Start new cart/i }));
     expect(window.sessionStorage.getItem("shopmate.receipt.v1")).toBeNull();

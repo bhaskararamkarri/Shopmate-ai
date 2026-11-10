@@ -321,14 +321,15 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
       <header className="shrink-0 border-b border-border-subtle bg-surface-container-low lg:bg-surface">
         <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 py-2.5 md:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-2.5 py-1 text-[11px] font-semibold tracking-wide text-primary">
+            <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-container-high px-2.5 py-1 text-[10px] font-semibold tracking-wide text-primary sm:text-[11px]">
               <span
                 className="material-symbols-outlined text-[14px]"
                 aria-hidden="true"
               >
                 psychology
               </span>
-              <span>SHOPMATE WORKSPACE</span>
+              <span className="sm:hidden">WORKSPACE</span>
+              <span className="hidden sm:inline">SHOPMATE WORKSPACE</span>
             </span>
             <span className="hidden text-xs text-text-muted sm:inline">/</span>
             <h1 className="truncate text-sm font-semibold tracking-tight text-on-surface md:text-base">
@@ -477,39 +478,41 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
             className="flex-1 overflow-y-auto overscroll-contain pb-4 pr-1 no-scrollbar"
           >
             {showEmptyState ? (
-              <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center py-6 text-center">
-                <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-1 text-xs font-medium text-text-muted shadow-2xs">
-                  <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
-                  <span>ShopMate Engine • Grounded in live catalog specifications</span>
-                </div>
+              <div className="flex min-h-full flex-col py-4">
+                <div className="my-auto mx-auto flex w-full max-w-2xl flex-col items-center text-center">
+                  <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-1 text-xs font-medium text-text-muted shadow-2xs">
+                    <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                    <span>ShopMate Engine • Grounded in live catalog specifications</span>
+                  </div>
 
-                <div className="w-full rounded-2xl border border-border-subtle bg-surface-card p-6 shadow-sm md:p-8">
-                  <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-sm">
-                    <span className="material-symbols-outlined text-[26px]" aria-hidden="true">
-                      auto_awesome
+                  <div className="w-full rounded-2xl border border-border-subtle bg-surface-card p-6 shadow-sm md:p-8">
+                    <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-sm">
+                      <span className="material-symbols-outlined text-[26px]" aria-hidden="true">
+                        auto_awesome
+                      </span>
                     </span>
-                  </span>
-                  <h2 className="mt-4 text-xl font-bold tracking-tight text-on-surface">
-                    ShopMate Research Copilot
-                  </h2>
-                  <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-on-surface-variant">
-                    Tell ShopMate what you need. It inspects verified catalog specs,
-                    evaluates honest trade-offs, and renders side-by-side picks inline.
-                  </p>
+                    <h2 className="mt-4 text-xl font-bold tracking-tight text-on-surface">
+                      ShopMate Research Copilot
+                    </h2>
+                    <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-on-surface-variant">
+                      Tell ShopMate what you need. It inspects verified catalog specs,
+                      evaluates honest trade-offs, and renders side-by-side picks inline.
+                    </p>
 
-                  <ul className="mt-6 grid w-full gap-2.5 sm:grid-cols-2">
-                    {DEMO_PROMPTS.map((prompt) => (
-                      <li key={prompt}>
-                        <button
-                          type="button"
-                          onClick={() => void send(prompt)}
-                          className="h-full w-full rounded-xl border border-border-subtle bg-surface-container-low px-4 py-3 text-left text-xs font-medium leading-snug text-on-surface transition-all hover:border-primary/40 hover:bg-surface-container hover:text-primary"
-                        >
-                          {prompt}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                    <ul className="mt-6 grid w-full gap-2.5 sm:grid-cols-2">
+                      {DEMO_PROMPTS.map((prompt) => (
+                        <li key={prompt}>
+                          <button
+                            type="button"
+                            onClick={() => void send(prompt)}
+                            className="h-full w-full rounded-xl border border-border-subtle bg-surface-container-low px-4 py-3 text-left text-xs font-medium leading-snug text-on-surface transition-all hover:border-primary/40 hover:bg-surface-container hover:text-primary"
+                          >
+                            {prompt}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
             ) : (

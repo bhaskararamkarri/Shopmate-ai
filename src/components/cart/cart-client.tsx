@@ -179,7 +179,7 @@ export function CartClient() {
               <p className="font-heading text-[11px] font-semibold uppercase tracking-wider text-on-tertiary-fixed">
                 SANDBOX SIMULATION MODE
               </p>
-              <p className="truncate text-xs text-on-tertiary-fixed-variant">
+              <p className="text-xs leading-snug text-on-tertiary-fixed-variant">
                 PayPal Testnet active · No real monetary funds deducted
               </p>
             </div>

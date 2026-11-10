@@ -123,7 +123,7 @@ export function ProductImage({
         <img
           src={image}
           alt={product.name}
-          loading="lazy"
+          loading="eager"
           referrerPolicy="no-referrer"
           onError={() => setFailedImage(image)}
           className={cn("size-full object-cover", imageClassName)}

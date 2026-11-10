@@ -275,7 +275,7 @@ export function Navbar() {
         </div>
 
         {/* Mobile Compact Glass Header (< lg, Stitch 01–04 & Screen 05 Confirmation Variant) */}
-        <div className="flex h-16 items-center justify-between gap-2 px-4 lg:hidden">
+        <div className="flex h-16 items-center justify-between gap-1.5 px-3 lg:hidden">
           {isMobileConfirmation ? (
             <>
               <div className="flex min-w-0 items-center gap-1.5">
@@ -310,21 +310,21 @@ export function Navbar() {
               <Link
                 href="/"
                 aria-label="ShopMate AI Home"
-                className="flex min-w-0 items-center gap-2 text-on-surface"
+                className="flex shrink-0 items-center gap-1.5 text-on-surface"
               >
-                <ShopMateLogo variant="icon" size="sm" className="h-7 w-7" />
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-heading text-[17px] font-semibold tracking-tight text-on-surface">
-                    ShopMate AI
+                <ShopMateLogo variant="icon" size="sm" className="h-7 w-7 shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <span className="whitespace-nowrap font-heading text-[16px] font-semibold tracking-tight text-on-surface">
+                    ShopMate
                   </span>
-                  <span className="rounded-full bg-surface-container px-1.5 py-0.5 font-mono text-[11px] font-medium text-text-muted">
+                  <span className="rounded-full bg-surface-container px-1.5 py-0.5 font-mono text-[10px] font-medium text-text-muted">
                     v2.0
                   </span>
                 </div>
               </Link>
 
               <div className="flex shrink-0 items-center gap-1">
-                <span className="rounded-full bg-tertiary-fixed px-2 py-0.5 font-heading text-[11px] font-semibold uppercase tracking-wide text-on-tertiary-fixed">
+                <span className="rounded-full bg-tertiary-fixed px-2 py-0.5 font-heading text-[10px] font-semibold uppercase tracking-wide text-on-tertiary-fixed">
                   Sandbox
                 </span>
                 <button

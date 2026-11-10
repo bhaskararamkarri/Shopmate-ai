@@ -140,6 +140,10 @@ export function CompareClient() {
   const topLeaderProduct = topInsightEntry
     ? compareProducts.find((p) => p.id === topInsightEntry[0])
     : undefined;
+  const bestOverallChoiceId =
+    compareProducts.find(
+      (p) => matrix?.insights.get(p.id)?.badge === "Best Overall",
+    )?.id ?? compareProducts[0]?.id;
 
   let completenessPct = 100;
   let variancePct = 0;
@@ -498,23 +502,23 @@ export function CompareClient() {
               </span>
             </div>
 
-            <div className="flex w-full items-center justify-end gap-2.5 xl:w-auto">
-              {compareProducts.slice(0, 2).map((product, index) => {
+            <div className="flex w-full items-center justify-end gap-2 sm:gap-2.5 xl:w-auto">
+              {compareProducts.slice(0, 2).map((product) => {
                 const insight = matrix?.insights.get(product.id);
-                const isPrimary = index === 1 || insight?.badge === "Best Overall";
+                const isPrimary = product.id === bestOverallChoiceId;
                 return (
                   <button
                     key={product.id}
                     type="button"
                     onClick={() => handleChooseAndCheckout(product.id)}
                     className={cn(
-                      "flex min-h-[44px] flex-1 items-center justify-between gap-2 rounded-xl px-4 py-2 text-left transition-all active:scale-[0.99] sm:flex-initial",
+                      "flex min-h-[44px] min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left transition-all active:scale-[0.99] sm:flex-initial sm:px-4",
                       isPrimary
                         ? "bg-primary text-on-primary shadow-sm hover:bg-surface-tint"
-                        : "bg-surface-container text-on-surface shadow-2xs hover:bg-surface-container-high",
+                        : "bg-brand-deep-indigo text-white shadow-sm hover:bg-brand-deep-indigo/90",
                     )}
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-semibold md:text-sm">
                         Choose {product.name} —{" "}
                         {formatMoney(product.price, product.currency)}
@@ -522,7 +526,7 @@ export function CompareClient() {
                       <div
                         className={cn(
                           "truncate text-[10px] font-medium",
-                          isPrimary ? "text-on-primary-container" : "text-text-muted",
+                          isPrimary ? "text-on-primary-container" : "text-white/75",
                         )}
                       >
                         {insight?.badge ?? product.brand}
@@ -531,7 +535,7 @@ export function CompareClient() {
                     <span
                       className={cn(
                         "material-symbols-outlined shrink-0 text-[18px]",
-                        isPrimary ? "text-on-primary" : "text-primary",
+                        isPrimary ? "text-on-primary" : "text-secondary-fixed",
                       )}
                       aria-hidden="true"
                     >

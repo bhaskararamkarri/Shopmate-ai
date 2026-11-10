@@ -78,10 +78,18 @@ describe("Stitch Comparison Matrix & Unit-Safe Spec Grouping", () => {
     );
     expect(screen.getByText(/Product Comparison/i)).toBeDefined();
     expect(screen.getAllByText(/SPEC LEAD/i).length).toBeGreaterThanOrEqual(1);
-    const chooseBtn = screen.getAllByRole("button", {
+    const chooseAurora = screen.getByRole("button", {
       name: /choose aurora/i,
-    })[0]!;
-    fireEvent.click(chooseBtn);
+    });
+    const chooseSpeaker = screen.getByRole("button", {
+      name: /choose pulse/i,
+    });
+    expect(chooseAurora.className).toContain("min-w-0");
+    expect(chooseSpeaker.className).toContain("min-w-0");
+    // Only the Best Overall pick receives primary purple accent; second pick uses distinct dark slate
+    expect(chooseAurora.className).toContain("bg-primary");
+    expect(chooseSpeaker.className).not.toContain("bg-primary ");
+    fireEvent.click(chooseAurora);
     expect(mockPush).toHaveBeenCalledWith("/cart");
   });
 
@@ -98,3 +106,4 @@ describe("Stitch Comparison Matrix & Unit-Safe Spec Grouping", () => {
     expect(matrix.priceComparison.hasCurrencyMismatch).toBe(true);
   });
 });
+

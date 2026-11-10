@@ -19,7 +19,7 @@ export function HeroSearch({
   prompts,
   className,
   idPrefix = "hero",
-  placeholder = "Ask anything (e.g. Compare ANC headphones under $250 for travel)...",
+  placeholder = "Ask anything (e.g. ANC headphones under $250)",
 }: {
   prompts?: string[];
   className?: string;

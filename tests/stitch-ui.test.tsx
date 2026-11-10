@@ -19,6 +19,7 @@ vi.mock("next/navigation", () => ({
 import { ShopMateLogo } from "@/components/brand/logo";
 import { ComparisonDrawer } from "@/components/compare/comparison-drawer";
 import { DiscoveryCatalog } from "@/components/shop/discovery-catalog";
+import { HeroSearch } from "@/components/shop/hero-search";
 import { ProductAnalysisDrawer } from "@/components/shop/product-analysis-drawer";
 import { ProductCard } from "@/components/shop/product-card";
 import {
@@ -228,5 +229,36 @@ describe("Exact Stitch Discovery UI & Floating Drawer Integration", () => {
 
     const safeLink = screen.getByRole("link", { name: /see at trusted\.example/i });
     expect(safeLink.getAttribute("href")).toBe("https://trusted.example/item/1");
+  });
+
+  it("prevents category tile clipping, HeroSearch placeholder clipping, lazy blank tiles, and translucent hover tooltip", () => {
+    render(
+      <ShopProvider>
+        <HeroSearch />
+        <DiscoveryCatalog
+          products={DEMO_PRODUCTS}
+          featuredIds={FEATURED_PRODUCT_IDS}
+        />
+      </ShopProvider>,
+    );
+
+    const searchInput = screen.getByRole("textbox");
+    expect((searchInput.getAttribute("placeholder") ?? "").length).toBeLessThanOrEqual(48);
+
+    const allCatalogBtn = screen.getByRole("button", { name: /all catalog/i });
+    expect(allCatalogBtn.className).toContain("min-w-[152px]");
+
+    const imgs = document.querySelectorAll("img");
+    expect(imgs.length).toBeGreaterThan(0);
+    for (const img of imgs) {
+      expect(img.getAttribute("loading")).toBe("eager");
+    }
+
+    const firstCompare = screen.getAllByRole("button", { name: /compare/i })[0]!;
+    fireEvent.click(firstCompare);
+    const tooltip = screen.getByText(/Added to Matrix/i).closest("div.w-56");
+    expect(tooltip).toBeDefined();
+    expect(tooltip?.className).toContain("bg-brand-deep-indigo");
+    expect(tooltip?.className).not.toContain("bg-brand-deep-indigo/95");
   });
 });
