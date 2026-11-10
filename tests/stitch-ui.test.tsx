@@ -19,6 +19,7 @@ vi.mock("next/navigation", () => ({
 import { ShopMateLogo } from "@/components/brand/logo";
 import { ComparisonDrawer } from "@/components/compare/comparison-drawer";
 import { DiscoveryCatalog } from "@/components/shop/discovery-catalog";
+import { ProductAnalysisDrawer } from "@/components/shop/product-analysis-drawer";
 import { ProductCard } from "@/components/shop/product-card";
 import {
   DEMO_PRODUCTS,
@@ -26,10 +27,12 @@ import {
   getDemoProduct,
 } from "@/lib/demo-catalog";
 import { ShopProvider, useShop } from "@/lib/store";
+import type { Product } from "@/types";
 
 beforeEach(() => {
   mockPathname = "/";
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -44,14 +47,14 @@ function SeedCompareHarness({ ids }: { ids: string[] }) {
   return <ComparisonDrawer />;
 }
 
-describe("Stitch Light UI Integration", () => {
-  it("uses currentColor on Shop wordmark for crisp light-mode contrast", () => {
+describe("Exact Stitch Discovery UI & Floating Drawer Integration", () => {
+  it("preserves currentColor on ShopMateLogo wordmark", () => {
     const { container } = render(<ShopMateLogo variant="horizontal" />);
     const textEl = container.querySelector("text");
     expect(textEl?.getAttribute("fill")).toBe("currentColor");
   });
 
-  it("hides ComparisonDrawer when no items are pinned and shows dock when items are selected", () => {
+  it("hides ComparisonDrawer when empty, shows dock when pinned, and clears mobile nav cleanly", () => {
     render(
       <ShopProvider>
         <ComparisonDrawer />
@@ -72,12 +75,16 @@ describe("Stitch Light UI Integration", () => {
         />
       </ShopProvider>,
     );
+    const dock = screen.getByRole("complementary", {
+      name: /pinned product comparison drawer/i,
+    });
+    expect(dock.className).toContain("bottom-20");
     expect(screen.getByText(/instant comparison matrix/i)).toBeDefined();
     expect(screen.getByText("2/4 Selected")).toBeDefined();
     expect(screen.getByRole("link", { name: /launch matrix/i })).toBeDefined();
   });
 
-  it("expands ComparisonDrawer peek panel, shows real specs, and removes items cleanly", () => {
+  it("expands ComparisonDrawer peek panel, shows Side-by-Side Spec Breakdown & Quick Verdict, and removes items", () => {
     render(
       <ShopProvider>
         <SeedCompareHarness
@@ -93,6 +100,8 @@ describe("Stitch Light UI Integration", () => {
 
     fireEvent.click(toggleBtn);
     expect(toggleBtn.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(/side-by-side spec breakdown/i)).toBeDefined();
+    expect(screen.getByText(/quick verdict/i)).toBeDefined();
     expect(screen.getByText("Aurora ANC Headphones")).toBeDefined();
     expect(screen.getByText("Bloom ANC Earbuds")).toBeDefined();
     expect(screen.getByText("$129 – $249")).toBeDefined();
@@ -124,7 +133,7 @@ describe("Stitch Light UI Integration", () => {
     }
   });
 
-  it("filters and sorts products interactively in DiscoveryCatalog", () => {
+  it("filters and sorts products in DiscoveryCatalog and renders Catalog Attribute Profile & mobile Instant Matrix banner", () => {
     render(
       <ShopProvider>
         <DiscoveryCatalog
@@ -136,20 +145,21 @@ describe("Stitch Light UI Integration", () => {
 
     // Default Featured shows 4 products
     expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect(screen.getByText(/catalog attribute profile/i)).toBeDefined();
+    expect(screen.getByText(/instant matrix/i)).toBeDefined();
 
     // Filter to Audio (3 items)
-    fireEvent.click(screen.getByRole("button", { name: /audio/i }));
-    const audioArticles = screen.getAllByRole("article");
-    expect(audioArticles).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: /^audio/i }));
+    expect(screen.getAllByRole("article")).toHaveLength(3);
 
-    // Sort Lowest Price first ($89 Pulse Portable Speaker before $129 Bloom and $249 Aurora)
+    // Sort Lowest Price first ($89 Pulse before $129 Bloom and $249 Aurora)
     fireEvent.click(screen.getByRole("button", { name: /lowest price/i }));
     const headings = screen.getAllByRole("heading", { level: 3 });
     expect(headings[0]?.textContent).toBe("Pulse Portable Speaker");
     expect(headings[2]?.textContent).toBe("Aurora ANC Headphones");
   });
 
-  it("renders ProductCard with real specs preview and preserves Add-to-Cart as first button", () => {
+  it("renders ProductCard Stitch actions (Compare -> Compared, Analysis -> slide-over drawer Add to Cart)", () => {
     const product = getDemoProduct("demo-aurora-headphones")!;
     render(
       <ShopProvider>
@@ -160,9 +170,63 @@ describe("Stitch Light UI Integration", () => {
     expect(screen.getByText("Battery life")).toBeDefined();
     expect(screen.getByText("34 hours")).toBeDefined();
 
-    const buttons = screen.getAllByRole("button");
-    expect(buttons[0]?.textContent).toContain("Add to cart");
-    fireEvent.click(buttons[0]!);
-    expect(buttons[0]?.textContent).toContain("In cart");
+    // No discount pill when compareAtPrice is absent
+    expect(screen.queryByText(/-\d+%/)).toBeNull();
+
+    const compareBtn = screen.getByRole("button", { name: /compare/i });
+    expect(compareBtn.textContent).toContain("Compare");
+    fireEvent.click(compareBtn);
+    expect(compareBtn.textContent).toContain("Compared");
+
+    const analysisBtn = screen.getByRole("button", { name: /analysis/i });
+    fireEvent.click(analysisBtn);
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeDefined();
+    const addBtn = screen.getByRole("button", { name: /add to cart/i });
+    fireEvent.click(addBtn);
+    expect(screen.getByRole("button", { name: /in cart/i })).toBeDefined();
+  });
+
+  it("omits unsafe javascript:/data: buyUrl links in ProductAnalysisDrawer while rendering safe https offers and genuine discounts", () => {
+    const unsafeLiveProduct: Product = {
+      ...getDemoProduct("demo-aurora-headphones")!,
+      id: "live-unsafe-1",
+      source: "channel3",
+      merchant: "sketchy.example",
+      buyUrl: "javascript:alert(1)",
+      compareAtPrice: 299,
+      price: 249,
+    };
+
+    const { rerender } = render(
+      <ShopProvider>
+        <ProductAnalysisDrawer
+          product={unsafeLiveProduct}
+          open
+          onClose={vi.fn()}
+        />
+      </ShopProvider>,
+    );
+
+    expect(screen.queryByRole("link", { name: /see at/i })).toBeNull();
+    expect(screen.getByText("-17%")).toBeDefined();
+
+    rerender(
+      <ShopProvider>
+        <ProductAnalysisDrawer
+          product={{
+            ...unsafeLiveProduct,
+            merchant: "trusted.example",
+            buyUrl: "https://trusted.example/item/1",
+          }}
+          open
+          onClose={vi.fn()}
+        />
+      </ShopProvider>,
+    );
+
+    const safeLink = screen.getByRole("link", { name: /see at trusted\.example/i });
+    expect(safeLink.getAttribute("href")).toBe("https://trusted.example/item/1");
   });
 });
