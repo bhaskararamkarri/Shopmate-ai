@@ -4,7 +4,7 @@
 
 ShopMate AI transforms online shopping from tedious browsing into an evidence-grounded decision workspace. Users can specify natural-language constraints, budgets, and priorities, receive transparent recommendations that never invent specifications or reviews, compare shortlisted products side by side, and complete verified checkouts via PayPal Sandbox.
 
-**Hosted Preview:** [https://shopmate-54pwk0h6d-bhaskararamkarris-projects.vercel.app](https://shopmate-54pwk0h6d-bhaskararamkarris-projects.vercel.app)
+**Hosted Preview:** [https://shopmate-pa8ufnb1f-bhaskararamkarris-projects.vercel.app](https://shopmate-pa8ufnb1f-bhaskararamkarris-projects.vercel.app)
 
 ---
 
