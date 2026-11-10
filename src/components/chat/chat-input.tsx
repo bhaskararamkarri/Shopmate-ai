@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
- * Chat composer. Enter sends, Shift+Enter adds a newline; IME-composing
- * input is never treated as a submit.
+ * Stitch Tier-3 floating glass chat composer.
+ * Enter sends, Shift+Enter inserts a newline; IME composition is respected.
  */
 export function ChatInput({
   pending,
@@ -44,7 +44,10 @@ export function ChatInput({
 
   return (
     <form
-      className={cn("flex items-end gap-2", className)}
+      className={cn(
+        "stitch-tier-3 flex items-end gap-2 rounded-2xl border border-input bg-card/95 p-1.5 backdrop-blur-xl",
+        className,
+      )}
       onSubmit={(event) => {
         event.preventDefault();
         send();
@@ -60,16 +63,20 @@ export function ChatInput({
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={pending ? "ShopMate is replying…" : "Describe what you are shopping for…"}
+        placeholder={
+          pending
+            ? "ShopMate is evaluating catalog options…"
+            : "Ask ShopMate what you are shopping for…"
+        }
         disabled={pending}
         enterKeyHint="send"
         autoComplete="off"
-        className="min-h-11 max-h-40 rounded-xl py-2.5"
+        className="min-h-11 max-h-40 border-0 bg-transparent py-2.5 shadow-none focus-visible:ring-0"
       />
       <Button
         type="submit"
         size="icon-lg"
-        className="shrink-0 rounded-xl"
+        className="shrink-0 rounded-xl shadow-xs"
         disabled={pending || value.trim().length === 0}
         aria-label="Send message"
       >

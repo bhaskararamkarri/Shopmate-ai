@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif, Inter } from "next/font/google";
 import "./globals.css";
 import { ShopProvider } from "@/lib/store";
 import { Navbar } from "@/components/shop/navbar";
 import { Footer } from "@/components/shop/footer";
+import { ComparisonDrawer } from "@/components/compare/comparison-drawer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -15,7 +21,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-/* Editorial display serif — hero and section headlines only. */
+/* Editorial display serif — preserved for display accents. */
 const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument",
   weight: "400",
@@ -24,7 +30,9 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://shopmate-ai.vercel.app"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "https://shopmate-ai.vercel.app",
+  ),
   title: {
     default: "ShopMate AI — Don't just shop. Make the right decision.",
     template: "%s — ShopMate AI",
@@ -60,7 +68,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}
+      className={`${geistSans.variable} ${inter.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased`}
     >
       <body className="flex min-h-svh flex-col bg-background font-sans text-foreground">
         <ShopProvider>
@@ -75,6 +83,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             {children}
           </main>
           <Footer />
+          <ComparisonDrawer />
         </ShopProvider>
       </body>
     </html>

@@ -604,15 +604,15 @@ export function PayPalCheckout({
         <h3 className="text-sm font-semibold tracking-tight text-foreground">
           Pay with PayPal
         </h3>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
-          <span className="size-1.5 rounded-full bg-sky-500 animate-pulse" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#B45309]">
+          <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
           PAYPAL SANDBOX
         </span>
       </div>
 
-      <div className="mt-3 rounded-lg border border-border/70 bg-muted/40 p-3 text-[12px] leading-relaxed text-muted-foreground">
-        <p className="flex items-center gap-1.5 font-medium text-foreground">
-          <ShieldCheck aria-hidden="true" className="size-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+      <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.08] p-3 text-[12px] leading-relaxed text-[#78350F]">
+        <p className="flex items-center gap-1.5 font-semibold text-[#92400E]">
+          <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-[#B45309]" />
           <span>ShopMate Sandbox demonstration</span>
         </p>
         <p className="mt-1">
@@ -686,8 +686,8 @@ export function PayPalCheckout({
         )}
 
         {phase === "captured" && capture && (
-          <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-[12px] leading-relaxed text-emerald-950 dark:text-emerald-100">
-            <p className="flex items-center gap-1.5 font-semibold">
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-[12px] leading-relaxed text-[#064E3B]">
+            <p className="flex items-center gap-1.5 font-semibold text-[#047857]">
               <CheckCircle2 aria-hidden="true" className="size-4" />
               Sandbox payment captured
             </p>
@@ -695,15 +695,15 @@ export function PayPalCheckout({
               PayPal verified a COMPLETED capture for this demo order. No real
               money moved and no goods will ship.
             </p>
-            <p className="mt-1">
+            <p className="mt-1 font-medium">
               Captured amount: {capturedAmount} ({capture.amount.currency})
             </p>
-            <p className="mt-2 text-[11px] text-emerald-900/80 dark:text-emerald-100/80">
-              Capture ID: <code className="font-mono">{capture.captureId}</code>
+            <p className="mt-2 text-[11px] text-[#065F46]">
+              Capture ID: <code className="font-mono font-semibold">{capture.captureId}</code>
               {orderId && (
                 <>
                   {" "}
-                  · Order ID: <code className="font-mono">{orderId}</code>
+                  · Order ID: <code className="font-mono font-semibold">{orderId}</code>
                 </>
               )}
             </p>
@@ -711,12 +711,12 @@ export function PayPalCheckout({
         )}
 
         {phase === "pending" && (
-          <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
-            <p className="flex items-center gap-1.5 font-semibold">
+          <div className="rounded-xl border border-primary/25 bg-secondary p-3.5 text-[12px] leading-relaxed text-foreground">
+            <p className="flex items-center gap-1.5 font-semibold text-primary">
               <Clock aria-hidden="true" className="size-4" />
               Capture pending — payment not complete
             </p>
-            <p className="mt-1">
+            <p className="mt-1 text-muted-foreground">
               PayPal is still processing this capture. ShopMate has not verified
               a completed payment, so do not treat this order as paid.
             </p>
@@ -736,9 +736,9 @@ export function PayPalCheckout({
         {phase === "unknown" && (
           <div
             role="alert"
-            className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-[12px] leading-relaxed text-amber-950 dark:text-amber-100"
+            className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3.5 text-[12px] leading-relaxed text-[#78350F]"
           >
-            <p className="flex items-center gap-1.5 font-semibold">
+            <p className="flex items-center gap-1.5 font-semibold text-[#B45309]">
               <AlertTriangle aria-hidden="true" className="size-4" />
               Payment outcome unknown
             </p>
@@ -749,7 +749,7 @@ export function PayPalCheckout({
             {orderId && (
               <p className="mt-1">
                 Order reference:{" "}
-                <code className="font-mono">{orderId}</code>
+                <code className="font-mono font-semibold">{orderId}</code>
               </p>
             )}
             <Button

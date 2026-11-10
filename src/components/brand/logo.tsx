@@ -213,7 +213,7 @@ export function ShopMateLogo({
           fontSize="28"
           fontWeight="800"
           letterSpacing="-0.03em"
-          fill="#FFFFFF"
+          fill="currentColor"
         >
           Shop
           <tspan fill="url(#sm-full-mate)">Mate</tspan>
@@ -221,7 +221,7 @@ export function ShopMateLogo({
 
         {/* "v1.0" Pill Badge */}
         <g transform="translate(230, 18)">
-          <rect x="0" y="0" width="42" height="22" rx="7" fill="#8B5CF6" />
+          <rect x="0" y="0" width="42" height="22" rx="7" fill="#5B4CF5" />
           <text
             x="21"
             y="15.5"
@@ -247,7 +247,7 @@ export function ShopMateLogo({
           fontFamily="system-ui, -apple-system, 'Geist', sans-serif"
           fontSize="11.5"
           fontWeight="500"
-          fill="#94A3B8"
+          fill="#747482"
           letterSpacing="0.01em"
         >
           Shop smarter. Choose with confidence.
@@ -296,7 +296,7 @@ export function ShopMateLogo({
         fontSize="24"
         fontWeight="800"
         letterSpacing="-0.03em"
-        fill="#FFFFFF"
+        fill="currentColor"
       >
         Shop
         <tspan fill="url(#sm-hz-mate)">Mate</tspan>
@@ -304,7 +304,7 @@ export function ShopMateLogo({
 
       {/* "v1.0" Pill Badge */}
       <g transform="translate(182, 13)">
-        <rect x="0" y="0" width="38" height="20" rx="6" fill="#8B5CF6" />
+        <rect x="0" y="0" width="38" height="20" rx="6" fill="#5B4CF5" />
         <text
           x="19"
           y="14.5"

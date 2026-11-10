@@ -23,7 +23,7 @@ function Avatar({ className }: { className?: string }) {
     <span
       aria-hidden="true"
       className={cn(
-        "grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary",
+        "grid size-8 shrink-0 place-items-center rounded-xl border border-primary/20 bg-secondary text-primary shadow-2xs",
         className,
       )}
     >
@@ -46,8 +46,9 @@ function resolveMessageProducts(message: UiMessage): Product[] {
 }
 
 /**
- * One conversation row. User messages render as compact inked bubbles;
- * assistant replies render with their attached live or demo product cards.
+ * Stitch message row.
+ * User messages sit inside crisp Deep Indigo bubbles (#131627);
+ * Assistant responses sit inside Tier-1 pure white cards with inline product shortlists.
  */
 export function ChatMessageItem({
   message,
@@ -59,7 +60,7 @@ export function ChatMessageItem({
   if (message.role === "user") {
     return (
       <div className="flex justify-end" role="listitem" aria-label="You">
-        <div className="max-w-[85%] rounded-xl bg-primary px-4 py-2.5 text-[15px] leading-relaxed text-primary-foreground sm:max-w-[75%]">
+        <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-[#131627] px-4 py-2.5 text-[15px] leading-relaxed text-white shadow-xs sm:max-w-[75%]">
           {message.content}
         </div>
       </div>
@@ -71,8 +72,14 @@ export function ChatMessageItem({
 
   return (
     <div className="flex gap-3" role="listitem" aria-label="ShopMate assistant">
-      <Avatar className={failed ? "bg-destructive/10 text-destructive" : undefined} />
-      <div className="min-w-0 max-w-full flex-1 space-y-3 rounded-xl border border-border bg-card px-4 py-3.5">
+      <Avatar
+        className={
+          failed
+            ? "border-destructive/30 bg-destructive/10 text-destructive"
+            : undefined
+        }
+      />
+      <div className="stitch-tier-1 min-w-0 max-w-full flex-1 space-y-3.5 rounded-2xl border border-border bg-card px-4 py-4 sm:px-5">
         {message.pending && message.content === "" ? (
           <TypingDots />
         ) : (
@@ -89,8 +96,8 @@ export function ChatMessageItem({
         )}
 
         {message.intent && message.intent.clarifications.length > 0 ? (
-          <div className="rounded-lg bg-primary/5 px-3 py-2.5">
-            <p className="text-[13px] font-medium text-foreground">
+          <div className="rounded-xl border border-primary/15 bg-secondary/75 px-3.5 py-2.5">
+            <p className="text-[13px] font-semibold text-foreground">
               To narrow this down:
             </p>
             <ul className="mt-1.5 space-y-1">
@@ -99,7 +106,7 @@ export function ChatMessageItem({
                   key={question}
                   className="text-[13px] leading-relaxed text-muted-foreground"
                 >
-                  {question}
+                  • {question}
                 </li>
               ))}
             </ul>
@@ -107,8 +114,11 @@ export function ChatMessageItem({
         ) : null}
 
         {failed && onRetry && message.retryQuery ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive/5 px-3 py-2.5">
-            <TriangleAlert className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-3.5 py-2.5">
+            <TriangleAlert
+              className="size-4 shrink-0 text-destructive"
+              aria-hidden="true"
+            />
             <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-muted-foreground">
               The reply failed. Nothing was added to the cart or comparison.
             </p>
@@ -124,7 +134,10 @@ export function ChatMessageItem({
         ) : null}
 
         {products.length > 0 ? (
-          <ul className="grid gap-3 sm:grid-cols-2" aria-label="Recommended products">
+          <ul
+            className="grid gap-3 sm:grid-cols-2"
+            aria-label="Recommended products"
+          >
             {products.map((product) => (
               <li key={product.id} className="min-w-0">
                 <CompactProductCard product={product} />
@@ -135,13 +148,13 @@ export function ChatMessageItem({
 
         {products.length > 1 ? (
           <p className="border-t border-border pt-3 text-[13px] leading-relaxed text-muted-foreground">
-            Pin a few of these with the compare control, then open the
-            comparison table to see every spec side by side.
+            Pin a few of these with <strong className="font-semibold text-foreground">Compare</strong>, then open{" "}
+            <strong className="font-semibold text-primary">Product Matrix</strong> to inspect every documented specification side by side.
           </p>
         ) : null}
 
         {message.agentMeta ? (
-          <p className="border-t border-border pt-3 text-[12px] leading-relaxed text-muted-foreground">
+          <p className="border-t border-border pt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
             {message.agentMeta.mode === "keyword_fallback"
               ? "Keyword fallback (AI not configured)"
               : `AI agent${message.agentMeta.model ? ` · ${message.agentMeta.model}` : ""}`}

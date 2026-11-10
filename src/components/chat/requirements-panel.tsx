@@ -88,41 +88,43 @@ export function RequirementsPanel({
   return (
     <aside
       aria-label="Shopping requirements & refinements"
-      className="flex h-full w-full flex-col overflow-y-auto border-border bg-card/60 p-4"
+      className="flex h-full w-full flex-col overflow-y-auto bg-card p-4"
     >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="size-4 text-primary" aria-hidden="true" />
+          <span className="grid size-7 place-items-center rounded-lg bg-secondary text-primary">
+            <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+          </span>
           <h2 className="text-sm font-semibold tracking-tight text-foreground">
             Shopping Context
           </h2>
         </div>
-        {criteriaCount > 0 && (
-          <Badge variant="secondary" className="text-[11px] font-medium">
+        {criteriaCount > 0 ? (
+          <Badge variant="secondary" className="font-mono text-[11px] font-semibold text-primary">
             {criteriaCount} detected
           </Badge>
-        )}
+        ) : null}
       </div>
 
       <div className="mt-4 flex-1 space-y-5">
         {/* Active Requirements Card */}
-        <section className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <section className="space-y-2.5">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Active Requirements
           </h3>
 
           {criteriaCount === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-3.5 text-center text-xs text-muted-foreground">
-              <Sparkles className="mx-auto mb-1.5 size-4 text-muted-foreground/60" />
-              <p>No requirements identified yet.</p>
-              <p className="mt-1 text-[11px]">
-                Mention your budget, target category, or required features in chat.
+            <div className="rounded-xl border border-dashed border-input bg-background p-4 text-center text-xs text-muted-foreground">
+              <Sparkles className="mx-auto mb-1.5 size-4 text-primary/60" />
+              <p className="font-medium text-foreground">No criteria detected yet</p>
+              <p className="mt-1 text-[11px] leading-relaxed">
+                Mention your budget, product category, or must-have features in chat.
               </p>
             </div>
           ) : (
-            <div className="space-y-2 rounded-xl border border-border bg-background p-3 text-xs">
-              {hasCategory && (
+            <div className="stitch-tier-1 space-y-2.5 rounded-xl border border-border bg-background p-3.5 text-xs">
+              {hasCategory ? (
                 <div className="flex items-start gap-2">
                   <Tag className="mt-0.5 size-3.5 shrink-0 text-primary" />
                   <div>
@@ -132,40 +134,40 @@ export function RequirementsPanel({
                     </span>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {hasBudget && (
+              {hasBudget ? (
                 <div className="flex items-start gap-2">
-                  <DollarSign className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <DollarSign className="mt-0.5 size-3.5 shrink-0 text-[#047857]" />
                   <div>
                     <span className="font-medium text-muted-foreground">Budget: </span>
-                    <span className="font-semibold text-foreground">
+                    <span className="font-mono font-semibold text-foreground">
                       {budgetDisplay}
                     </span>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {hasUse && (
+              {hasUse ? (
                 <div className="flex items-start gap-2">
-                  <Target className="mt-0.5 size-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
+                  <Target className="mt-0.5 size-3.5 shrink-0 text-[#3B5CCC]" />
                   <div>
                     <span className="font-medium text-muted-foreground">Intended Use: </span>
                     <span className="text-foreground">{intent?.intendedUse}</span>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {hasPriorities && (
-                <div className="flex items-start gap-2 pt-1">
-                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              {hasPriorities ? (
+                <div className="flex items-start gap-2 pt-0.5">
+                  <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-[#B45309]" />
                   <div className="space-y-1">
                     <span className="font-medium text-muted-foreground">Priorities:</span>
                     <div className="flex flex-wrap gap-1">
                       {intent?.priorities.map((p) => (
                         <span
                           key={p}
-                          className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-secondary-foreground"
+                          className="rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-foreground"
                         >
                           {p}
                         </span>
@@ -173,18 +175,18 @@ export function RequirementsPanel({
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {hasFeatures && (
-                <div className="flex items-start gap-2 pt-1">
-                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
+              {hasFeatures ? (
+                <div className="flex items-start gap-2 pt-0.5">
+                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
                   <div className="space-y-1">
                     <span className="font-medium text-muted-foreground">Features:</span>
                     <div className="flex flex-wrap gap-1">
                       {(intent?.requiredFeatures ?? []).map((f) => (
                         <span
                           key={f}
-                          className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                          className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-primary"
                         >
                           {f}
                         </span>
@@ -192,7 +194,7 @@ export function RequirementsPanel({
                       {Object.entries(intent?.requiredSpecs ?? {}).map(([k, v]) => (
                         <span
                           key={k}
-                          className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                          className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-primary"
                         >
                           {k}: {v}
                         </span>
@@ -200,19 +202,19 @@ export function RequirementsPanel({
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </section>
 
         {/* Clarifications Needed */}
-        {hasClarifications && (
-          <section className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+        {hasClarifications ? (
+          <section className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#B45309]">
               <HelpCircle className="size-3.5" />
               <span>Clarification Needed</span>
             </div>
-            <ul className="space-y-1.5 text-[12px] text-muted-foreground">
+            <ul className="space-y-1.5 text-[12px] text-[#78350F]">
               {intent?.clarifications.map((question) => (
                 <li key={question} className="leading-snug">
                   • {question}
@@ -220,15 +222,13 @@ export function RequirementsPanel({
               ))}
             </ul>
           </section>
-        )}
+        ) : null}
 
         {/* Interactive Refinement: Budget Presets */}
         <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Adjust Budget Ceiling
-            </h3>
-          </div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Adjust Budget Ceiling
+          </h3>
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {BUDGET_PRESETS.map((preset) => (
               <Button
@@ -238,7 +238,7 @@ export function RequirementsPanel({
                 size="sm"
                 disabled={pending}
                 onClick={() => onRefine(preset.value)}
-                className="h-7 text-xs font-medium"
+                className="h-8 font-mono text-xs font-medium"
               >
                 {preset.label}
               </Button>
@@ -248,7 +248,7 @@ export function RequirementsPanel({
 
         {/* Interactive Refinement: Priority Toggles */}
         <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Refine Priorities
           </h3>
           <div className="flex flex-wrap gap-1.5">
@@ -258,7 +258,7 @@ export function RequirementsPanel({
                 type="button"
                 disabled={pending}
                 onClick={() => onRefine(preset.value)}
-                className="rounded-lg border border-border bg-background px-2.5 py-1 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-accent disabled:opacity-50"
+                className="rounded-full border border-border bg-background px-2.5 py-1 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-secondary hover:text-primary disabled:opacity-50"
               >
                 + {preset.label}
               </button>
@@ -268,7 +268,7 @@ export function RequirementsPanel({
 
         {/* Interactive Refinement: Intended Use Presets */}
         <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Target Use Case
           </h3>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -278,7 +278,7 @@ export function RequirementsPanel({
                 type="button"
                 disabled={pending}
                 onClick={() => onRefine(preset.value)}
-                className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-accent disabled:opacity-50"
+                className="rounded-xl border border-border bg-background px-2.5 py-2 text-left text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-secondary hover:text-primary disabled:opacity-50"
               >
                 {preset.label}
               </button>
@@ -286,13 +286,12 @@ export function RequirementsPanel({
           </div>
         </section>
 
-        {/* Privacy Note */}
-        <div className="flex items-center gap-2 rounded-lg bg-secondary/50 p-2 text-[11px] text-muted-foreground">
+        {/* Session Note */}
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/60 p-2.5 text-[11px] text-muted-foreground">
           <AlertCircle className="size-3.5 shrink-0" />
-          <span>Intent is maintained within this session only.</span>
+          <span>Criteria are evaluated only for this active workspace session.</span>
         </div>
       </div>
     </aside>
   );
 }
-
