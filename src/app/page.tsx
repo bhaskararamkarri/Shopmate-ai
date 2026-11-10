@@ -152,7 +152,7 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-4xl px-4 text-center md:px-6 lg:max-w-6xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3.5 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-sm mb-6">
             <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
-            <span>Shop smarter. Choose with confidence.</span>
+            <span>Intelligent Trade-off Engine</span>
           </div>
 
           <h1 className="lines text-[36px] font-bold leading-[1.08] tracking-[-0.03em] text-foreground sm:text-[54px] md:text-[64px] lg:text-[76px] lg:leading-[1.02]">
@@ -169,27 +169,27 @@ export default function HomePage() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-            ShopMate AI is your intelligent shopping decision engine. Describe your needs in plain language, research verified trade-offs, and make confident purchases.
+            ShopMate analyzes specifications, verified reviews, and real-world trade-offs to help you make confident buying decisions.
           </p>
 
           <HeroSearch
             className="mx-auto mt-9 max-w-2xl"
-            placeholder="e.g. Find quiet wireless headphones under $250 for travel..."
-            ctaText="Find my best match"
+            placeholder="e.g. Mechanical keyboard for multi-device coding under $150"
+            ctaText="Run Analysis"
           />
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
-              Live Channel3 Catalog Data
+              Live Catalog Sync
             </span>
             <span className="flex items-center gap-1.5">
               <Sparkles className="size-4 text-primary" aria-hidden="true" />
-              AI Recommendation Engine
+              Neural Match Engine
             </span>
             <span className="flex items-center gap-1.5">
               <PackageCheck className="size-4 text-primary" aria-hidden="true" />
-              Secure PayPal Sandbox Checkout
+              Encrypted Checkout
             </span>
           </div>
         </div>
@@ -282,7 +282,7 @@ export default function HomePage() {
               />
               <Button asChild variant="outline" size="sm" className="gap-1.5">
                 <Link href="/chat">
-                  Open AI Workspace
+                  Launch Studio
                   <ArrowUpRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
@@ -455,7 +455,7 @@ export default function HomePage() {
               </p>
               <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
                 <Button asChild size="lg" className="h-12 px-8 text-base shadow-lg shadow-primary/25">
-                  <Link href="/chat">Open AI Workspace</Link>
+                  <Link href="/chat">Launch Studio</Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="h-12 px-8 text-base">
                   <Link href="/compare">Compare Products</Link>

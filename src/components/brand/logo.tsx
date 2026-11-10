@@ -219,20 +219,20 @@ export function ShopMateLogo({
           <tspan fill="url(#sm-full-mate)">Mate</tspan>
         </text>
 
-        {/* "AI" Pill Badge */}
+        {/* "v1.0" Pill Badge */}
         <g transform="translate(230, 18)">
-          <rect x="0" y="0" width="34" height="22" rx="7" fill="#8B5CF6" />
+          <rect x="0" y="0" width="42" height="22" rx="7" fill="#8B5CF6" />
           <text
-            x="17"
+            x="21"
             y="15.5"
             fontFamily="system-ui, -apple-system, sans-serif"
-            fontSize="13"
+            fontSize="12"
             fontWeight="900"
             fill="#FFFFFF"
             textAnchor="middle"
             letterSpacing="0.02em"
           >
-            AI
+            v1.0
           </text>
           {/* Burst Rays */}
           <path d="M 32 -3 L 36 -6" stroke="#C084FC" strokeWidth="1.75" strokeLinecap="round" />
@@ -302,11 +302,11 @@ export function ShopMateLogo({
         <tspan fill="url(#sm-hz-mate)">Mate</tspan>
       </text>
 
-      {/* "AI" Pill Badge */}
-      <g transform="translate(186, 13)">
-        <rect x="0" y="0" width="30" height="20" rx="6" fill="#8B5CF6" />
+      {/* "v1.0" Pill Badge */}
+      <g transform="translate(182, 13)">
+        <rect x="0" y="0" width="38" height="20" rx="6" fill="#8B5CF6" />
         <text
-          x="15"
+          x="19"
           y="14.5"
           fontFamily="system-ui, -apple-system, sans-serif"
           fontSize="12"
@@ -315,12 +315,12 @@ export function ShopMateLogo({
           textAnchor="middle"
           letterSpacing="0.02em"
         >
-          AI
+          v1.0
         </text>
         {/* Burst Rays */}
-        <path d="M 28 -2 L 32 -5" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M 33 3 L 37 2" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M 31 9 L 35 11" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 36 -2 L 40 -5" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 41 3 L 45 2" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 39 9 L 43 11" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round" />
       </g>
     </svg>
   );

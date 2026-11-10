@@ -138,7 +138,7 @@ export function CartClient() {
               </Link>
             </Button>
             <Button asChild variant="outline" size="default">
-              <Link href="/chat">Open AI Workspace</Link>
+              <Link href="/chat">Launch Studio</Link>
             </Button>
             <Button
               type="button"

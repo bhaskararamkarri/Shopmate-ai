@@ -10,9 +10,9 @@ import { useShop } from "@/lib/store";
 import { ShopMateLogo } from "@/components/brand/logo";
 
 const NAV_LINKS = [
-  { href: "/", label: "Discover" },
-  { href: "/chat", label: "AI Workspace" },
-  { href: "/compare", label: "Compare" },
+  { href: "/", label: "Catalog" },
+  { href: "/chat", label: "Studio" },
+  { href: "/compare", label: "Matchups" },
 ] as const;
 
 function isLinkActive(pathname: string, href: string): boolean {
@@ -36,7 +36,7 @@ function CartLink({ onNavigate }: { onNavigate?: () => void }) {
       aria-current={active ? "page" : undefined}
       className={cn(linkClasses, active ? linkActiveClasses : linkIdleClasses)}
     >
-      Cart
+      Bag
       {cartCount > 0 ? (
         <span className="ml-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[12px] font-semibold leading-none tabular-nums text-primary-foreground">
           {cartCount}
@@ -81,7 +81,7 @@ export function Navbar() {
 
         <div className="flex items-center gap-2.5">
           <Button asChild size="sm" className="hidden md:inline-flex shadow-sm shadow-primary/20">
-            <Link href="/chat">Open AI Workspace</Link>
+            <Link href="/chat">Launch Studio</Link>
           </Button>
           <Button
             type="button"
@@ -127,7 +127,7 @@ export function Navbar() {
             <CartLink onNavigate={() => setMobileOpen(false)} />
             <Button asChild size="default" className="mt-2 h-10 w-full shadow-sm shadow-primary/20">
               <Link href="/chat" onClick={() => setMobileOpen(false)}>
-                Open AI Workspace
+                Launch Studio
               </Link>
             </Button>
           </nav>

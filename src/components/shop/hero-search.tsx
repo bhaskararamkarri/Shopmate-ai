@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const DEFAULT_SHOPPING_PROMPTS = [
-  "Find wireless headphones under $250 for travel",
-  "Mechanical keyboard for multi-device coding",
-  "Fitness smartwatch with 7+ day battery life",
-  "Compact 4K camera for steady handheld video",
+  "Noise-canceling headphones < $250",
+  "Multi-device mechanical keyboard",
+  "Long-battery fitness tracker",
+  "Handheld 4K creator camera",
 ];
 
 /**
