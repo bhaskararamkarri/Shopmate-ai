@@ -149,21 +149,19 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
         return (
           <li
             key={product.id}
-            className="stitch-tier-1 flex flex-col justify-between space-y-4 rounded-2xl border border-border bg-card p-5"
+            className="flex flex-col justify-between space-y-4 rounded-2xl border border-border-subtle bg-surface-card p-5 shadow-sm"
           >
             <div className="space-y-3.5">
               <div>
-                <p className="line-clamp-1 text-sm font-semibold leading-snug tracking-tight text-foreground">
+                <p className="line-clamp-1 text-sm font-semibold leading-snug tracking-tight text-on-surface">
                   {product.name}
                 </p>
-                <p className="text-[12px] text-muted-foreground">
-                  {product.brand}
-                </p>
+                <p className="text-xs text-text-muted">{product.brand}</p>
               </div>
 
               {insight?.whyItMatches ? (
-                <div className="rounded-xl border border-border bg-secondary/60 p-3 text-xs leading-relaxed text-muted-foreground">
-                  <span className="font-semibold text-foreground">
+                <div className="rounded-xl bg-surface-container-low p-3 text-xs leading-relaxed text-on-surface-variant">
+                  <span className="font-semibold text-on-surface">
                     Evaluation:{" "}
                   </span>
                   {insight.whyItMatches}
@@ -172,7 +170,7 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
 
               {pros.length > 0 ? (
                 <div className="space-y-1.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#047857]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
                     Strengths
                   </p>
                   <ul className="space-y-1.5">
@@ -182,10 +180,10 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
                         className="flex items-start gap-2 text-[13px] leading-relaxed"
                       >
                         <Check
-                          className="mt-0.5 size-3.5 shrink-0 text-emerald-600"
+                          className="mt-0.5 size-3.5 shrink-0 text-secondary"
                           aria-hidden="true"
                         />
-                        <span className="text-foreground">{note.text}</span>
+                        <span className="text-on-surface">{note.text}</span>
                       </li>
                     ))}
                   </ul>
@@ -194,7 +192,7 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
 
               {cons.length > 0 ? (
                 <div className="space-y-1.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#B45309]">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-tertiary">
                     Trade-offs
                   </p>
                   <ul className="space-y-1.5">
@@ -204,10 +202,10 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
                         className="flex items-start gap-2 text-[13px] leading-relaxed"
                       >
                         <CircleAlert
-                          className="mt-0.5 size-3.5 shrink-0 text-[#B45309]"
+                          className="mt-0.5 size-3.5 shrink-0 text-tertiary"
                           aria-hidden="true"
                         />
-                        <span className="text-foreground">{note.text}</span>
+                        <span className="text-on-surface">{note.text}</span>
                       </li>
                     ))}
                   </ul>
@@ -216,17 +214,17 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
 
               {missingDisclosures.length > 0 ? (
                 <div className="space-y-1.5 pt-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
                     Data Disclosures
                   </p>
                   <ul className="space-y-1">
                     {missingDisclosures.slice(0, 3).map((disc) => (
                       <li
                         key={disc}
-                        className="flex items-start gap-2 text-[12px] leading-relaxed text-muted-foreground"
+                        className="flex items-start gap-2 text-xs leading-relaxed text-text-muted"
                       >
                         <HelpCircle
-                          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/80"
+                          className="mt-0.5 size-3.5 shrink-0 text-text-muted/80"
                           aria-hidden="true"
                         />
                         <span>{disc}</span>
@@ -237,7 +235,7 @@ export function ComparisonNotes({ products }: { products: Product[] }) {
               ) : null}
 
               {pros.length === 0 && cons.length === 0 ? (
-                <p className="text-[13px] leading-relaxed text-muted-foreground">
+                <p className="text-[13px] leading-relaxed text-text-muted">
                   Balanced against the other picks — no standout either way from
                   the recorded attributes.
                 </p>
