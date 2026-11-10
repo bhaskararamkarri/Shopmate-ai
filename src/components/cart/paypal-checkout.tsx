@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  FlaskConical,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -38,7 +39,7 @@ export interface PayPalCheckoutItem {
   quantity: number;
 }
 
-type CheckoutPhase =
+export type CheckoutPhase =
   | "loading"
   | "unavailable"
   | "ready"
@@ -210,9 +211,11 @@ export interface PayPalCaptureSuccessEvent {
 export function PayPalCheckout({
   items,
   onCaptureSuccess,
+  onPhaseChange,
 }: {
   items: PayPalCheckoutItem[];
   onCaptureSuccess?: (result: PayPalCaptureSuccessEvent) => void;
+  onPhaseChange?: (phase: CheckoutPhase) => void;
 }) {
   const [phase, setPhase] = useState<CheckoutPhase>("loading");
   const [message, setMessage] = useState("");
@@ -236,7 +239,13 @@ export function PayPalCheckout({
   const capturedRef = useRef(false);
   const captureAttemptedRef = useRef(false);
   const orderCreationErrorRef = useRef<string | null>(null);
-  const captureApprovedOrderRef = useRef<(orderIdToCapture: string) => Promise<void>>(() => Promise.resolve());
+  const captureApprovedOrderRef = useRef<
+    (orderIdToCapture: string) => Promise<void>
+  >(() => Promise.resolve());
+
+  useEffect(() => {
+    onPhaseChange?.(phase);
+  }, [phase, onPhaseChange]);
 
   // Keep the latest ids/quantities available to the PayPal callbacks without
   // re-rendering the Buttons frame on every parent render.
@@ -598,24 +607,27 @@ export function PayPalCheckout({
   return (
     <section
       aria-label="PayPal Sandbox checkout"
-      className="mt-5 border-t border-border pt-5"
+      className="mt-5 border-t border-border-subtle pt-5"
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold tracking-tight text-foreground">
+        <h3 className="font-heading text-sm font-semibold tracking-tight text-on-surface">
           Pay with PayPal
         </h3>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#B45309]">
-          <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-tertiary-fixed-dim/50 bg-tertiary-fixed px-2.5 py-0.5 font-heading text-[10px] font-semibold uppercase tracking-wider text-on-tertiary-fixed">
+          <span className="size-1.5 rounded-full bg-tertiary animate-pulse" />
           PAYPAL SANDBOX
         </span>
       </div>
 
-      <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.08] p-3 text-[12px] leading-relaxed text-[#78350F]">
-        <p className="flex items-center gap-1.5 font-semibold text-[#92400E]">
-          <ShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-[#B45309]" />
-          <span>ShopMate Sandbox demonstration</span>
+      <div className="mt-3 rounded-xl border border-tertiary-fixed-dim/50 bg-tertiary-fixed/40 p-3.5 text-[12px] leading-relaxed text-on-tertiary-fixed-variant">
+        <p className="flex items-center gap-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-tertiary">
+          <FlaskConical aria-hidden="true" className="size-3.5 shrink-0" />
+          <span>PAYPAL SANDBOX ENVIRONMENT ENABLED</span>
         </p>
-        <p className="mt-1">
+        <p className="mt-1 font-medium text-on-tertiary-fixed">
+          ShopMate Sandbox demonstration
+        </p>
+        <p className="mt-0.5 text-on-tertiary-fixed-variant">
           This is not a real retailer purchase. No goods are shipped. You are
           approving a test transaction only.
         </p>
@@ -624,9 +636,9 @@ export function PayPalCheckout({
       {phase === "loading" && (
         <p
           role="status"
-          className="mt-3 flex items-center gap-2 text-[13px] text-muted-foreground"
+          className="mt-3 flex items-center gap-2 text-[13px] text-text-muted"
         >
-          <ShieldCheck aria-hidden="true" className="size-4" />
+          <ShieldCheck aria-hidden="true" className="size-4 text-primary" />
           Loading PayPal Sandbox…
         </p>
       )}
@@ -634,7 +646,7 @@ export function PayPalCheckout({
       {phase === "unavailable" && (
         <div
           role="alert"
-          className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-[13px] text-destructive"
+          className="mt-3 rounded-xl border border-error/25 bg-error-container/50 p-3.5 text-[13px] text-on-error-container"
         >
           <p className="flex items-start gap-2">
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -644,7 +656,7 @@ export function PayPalCheckout({
             type="button"
             variant="outline"
             size="sm"
-            className="mt-3 gap-1.5"
+            className="mt-3 gap-1.5 border-error/30 bg-surface-card text-on-surface"
             onClick={handleRetry}
           >
             <RefreshCw aria-hidden="true" />
@@ -658,19 +670,20 @@ export function PayPalCheckout({
           ref={containerRef}
           data-testid="paypal-buttons"
           aria-hidden={buttonsHidden}
-          className={buttonsHidden ? "hidden" : "mt-3 min-h-12"}
+          className={buttonsHidden ? "hidden" : "mt-3.5 min-h-12"}
         />
       )}
 
       <div aria-live="polite" className="mt-3">
         {phase === "creating" && (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-[13px] text-text-muted">
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin text-primary" />
             Creating a ShopMate sandbox order…
           </p>
         )}
 
         {phase === "approval" && (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-[13px] text-primary font-medium">
             PayPal window open — complete the sandbox approval.
           </p>
         )}
@@ -678,16 +691,16 @@ export function PayPalCheckout({
         {phase === "capturing" && (
           <p
             role="status"
-            className="flex items-center gap-2 text-[13px] text-muted-foreground"
+            className="flex items-center gap-2 text-[13px] font-medium text-on-surface"
           >
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            <Loader2 aria-hidden="true" className="size-4 animate-spin text-primary" />
             Confirming payment with PayPal…
           </p>
         )}
 
         {phase === "captured" && capture && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-[12px] leading-relaxed text-[#064E3B]">
-            <p className="flex items-center gap-1.5 font-semibold text-[#047857]">
+          <div className="rounded-xl border border-secondary/25 bg-secondary-container/40 p-3.5 text-[12px] leading-relaxed text-on-secondary-fixed">
+            <p className="flex items-center gap-1.5 font-semibold text-secondary">
               <CheckCircle2 aria-hidden="true" className="size-4" />
               Sandbox payment captured
             </p>
@@ -698,7 +711,7 @@ export function PayPalCheckout({
             <p className="mt-1 font-medium">
               Captured amount: {capturedAmount} ({capture.amount.currency})
             </p>
-            <p className="mt-2 text-[11px] text-[#065F46]">
+            <p className="mt-2 text-[11px] text-on-secondary-fixed-variant">
               Capture ID: <code className="font-mono font-semibold">{capture.captureId}</code>
               {orderId && (
                 <>
@@ -711,12 +724,12 @@ export function PayPalCheckout({
         )}
 
         {phase === "pending" && (
-          <div className="rounded-xl border border-primary/25 bg-secondary p-3.5 text-[12px] leading-relaxed text-foreground">
+          <div className="rounded-xl border border-primary/20 bg-surface-container-low p-3.5 text-[12px] leading-relaxed text-on-surface">
             <p className="flex items-center gap-1.5 font-semibold text-primary">
               <Clock aria-hidden="true" className="size-4" />
               Capture pending — payment not complete
             </p>
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1 text-text-muted">
               PayPal is still processing this capture. ShopMate has not verified
               a completed payment, so do not treat this order as paid.
             </p>
@@ -736,13 +749,13 @@ export function PayPalCheckout({
         {phase === "unknown" && (
           <div
             role="alert"
-            className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3.5 text-[12px] leading-relaxed text-[#78350F]"
+            className="rounded-xl border border-tertiary-fixed-dim/50 bg-tertiary-fixed/40 p-3.5 text-[12px] leading-relaxed text-on-tertiary-fixed"
           >
-            <p className="flex items-center gap-1.5 font-semibold text-[#B45309]">
+            <p className="flex items-center gap-1.5 font-semibold text-tertiary">
               <AlertTriangle aria-hidden="true" className="size-4" />
               Payment outcome unknown
             </p>
-            <p className="mt-1">
+            <p className="mt-1 text-on-tertiary-fixed-variant">
               We couldn&apos;t confirm whether PayPal completed this payment.
               Do not retry — the payment status is still being checked.
             </p>
@@ -768,7 +781,7 @@ export function PayPalCheckout({
         {phase === "capture_error" && (
           <div
             role="alert"
-            className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-[13px] text-destructive"
+            className="rounded-xl border border-error/25 bg-error-container/50 p-3.5 text-[13px] text-on-error-container"
           >
             <p className="flex items-start gap-2">
               <AlertTriangle
@@ -781,7 +794,7 @@ export function PayPalCheckout({
               type="button"
               variant="outline"
               size="sm"
-              className="mt-2 gap-1.5"
+              className="mt-2 gap-1.5 bg-surface-card text-on-surface"
               onClick={handleCaptureRetry}
             >
               <RefreshCw aria-hidden="true" />
@@ -791,19 +804,19 @@ export function PayPalCheckout({
         )}
 
         {phase === "cancelled" && (
-          <p role="status" className="text-[13px] text-muted-foreground">
+          <p role="status" className="text-[13px] text-text-muted">
             Checkout cancelled — no payment was taken.
           </p>
         )}
 
         {phase === "error" && (
-          <div role="alert" className="text-[13px] text-destructive">
+          <div role="alert" className="text-[13px] text-error">
             <p>{message}</p>
             {diagnostic &&
               (diagnostic.code ||
                 diagnostic.debugId ||
                 diagnostic.correlationId) && (
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-[11px] text-text-muted">
                   PayPal reference:
                   {diagnostic.code ? ` ${diagnostic.code}` : ""}
                   {diagnostic.debugId
