@@ -11,7 +11,70 @@
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
   --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-instrument), Georgia, serif;
-  --color-navy: var(--navy);
+
+  /* Stitch Tonal Surface Architecture */
+  --color-surface: var(--surface);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-card: var(--surface-card);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-variant: var(--surface-variant);
+  --color-surface-tint: var(--surface-tint);
+  --color-canvas-bg: var(--canvas-bg);
+
+  /* Ink & Outline Tokens */
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-on-background: var(--on-background);
+  --color-text-muted: var(--text-muted);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-inverse-surface: var(--inverse-surface);
+  --color-inverse-on-surface: var(--inverse-on-surface);
+  --color-inverse-primary: var(--inverse-primary);
+  --color-brand-deep-indigo: var(--brand-deep-indigo);
+  --color-navy: var(--brand-deep-indigo);
+
+  /* Stitch Primary / Secondary / Tertiary / Error */
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-primary-fixed-dim: var(--primary-fixed-dim);
+  --color-on-primary-fixed: var(--on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--on-primary-fixed-variant);
+
+  --color-secondary: var(--secondary);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-secondary-fixed: var(--secondary-fixed);
+  --color-secondary-fixed-dim: var(--secondary-fixed-dim);
+  --color-on-secondary-fixed: var(--on-secondary-fixed);
+  --color-on-secondary-fixed-variant: var(--on-secondary-fixed-variant);
+
+  --color-tertiary: var(--tertiary);
+  --color-on-tertiary: var(--on-tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+  --color-tertiary-fixed: var(--tertiary-fixed);
+  --color-tertiary-fixed-dim: var(--tertiary-fixed-dim);
+  --color-on-tertiary-fixed: var(--on-tertiary-fixed);
+  --color-on-tertiary-fixed-variant: var(--on-tertiary-fixed-variant);
+
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  /* shadcn UI mappings */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -34,13 +97,12 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -51,79 +113,113 @@
 }
 
 /*
- * Stitch "Autonomous Commerce & Intelligence" — Neo-Precisionist Light System
- * Canvas #FAFAFC | Cards #FFFFFF | Hairline #EEEEF2 / #E5E7EB
- * Primary Electric Violet #5B4CF5 | Deep Indigo Dock #131627
+ * Stitch "Autonomous Commerce & Intelligence" — Exact Palette Tokens
+ * Ground #fcf8ff | Card #FFFFFF | Recessed Well #f5f2ff | Container #efecfb
+ * Primary #412cdd / #5b4cf5 | Secondary #006c49 | Tertiary #734700 | Ink #1b1b25
  */
 :root {
-  --background: #FAFAFC;
-  --foreground: #171721;
-  --card: #FFFFFF;
-  --card-foreground: #171721;
-  --popover: #FFFFFF;
-  --popover-foreground: #171721;
-  --primary: #5B4CF5;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F5F2FF;
-  --secondary-foreground: #1B1B25;
-  --muted: #F4F4F8;
+  --surface: #fcf8ff;
+  --surface-bright: #fcf8ff;
+  --surface-dim: #dbd8e7;
+  --surface-card: #ffffff;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f5f2ff;
+  --surface-container: #efecfb;
+  --surface-container-high: #e9e6f5;
+  --surface-container-highest: #e4e1ef;
+  --surface-variant: #e4e1ef;
+  --surface-tint: #503fea;
+  --canvas-bg: #fafafc;
+
+  --on-surface: #1b1b25;
+  --on-surface-variant: #464556;
+  --on-background: #1b1b25;
+  --text-muted: #747482;
+  --outline: #777587;
+  --outline-variant: #c8c4d8;
+  --border-subtle: #eeeef2;
+  --border-strong: #e5e7eb;
+  --inverse-surface: #302f3a;
+  --inverse-on-surface: #f2effe;
+  --inverse-primary: #c4c0ff;
+  --brand-deep-indigo: #131627;
+
+  --primary: #412cdd;
+  --on-primary: #ffffff;
+  --primary-container: #5b4cf5;
+  --on-primary-container: #eae6ff;
+  --primary-fixed: #e3dfff;
+  --primary-fixed-dim: #c4c0ff;
+  --on-primary-fixed: #120068;
+  --on-primary-fixed-variant: #3619d4;
+
+  --secondary: #006c49;
+  --on-secondary: #ffffff;
+  --secondary-container: #6cf8bb;
+  --on-secondary-container: #00714d;
+  --secondary-fixed: #6ffbbe;
+  --secondary-fixed-dim: #4edea3;
+  --on-secondary-fixed: #002113;
+  --on-secondary-fixed-variant: #005236;
+
+  --tertiary: #734700;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #935d00;
+  --on-tertiary-container: #ffe5ca;
+  --tertiary-fixed: #ffddb8;
+  --tertiary-fixed-dim: #ffb95f;
+  --on-tertiary-fixed: #2a1700;
+  --on-tertiary-fixed-variant: #653e00;
+
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+
+  /* shadcn compatibility mappings */
+  --background: #fcf8ff;
+  --foreground: #1b1b25;
+  --card: #ffffff;
+  --card-foreground: #1b1b25;
+  --popover: #ffffff;
+  --popover-foreground: #1b1b25;
+  --primary-foreground: #ffffff;
+  --secondary-foreground: #ffffff;
+  --muted: #f5f2ff;
   --muted-foreground: #747482;
-  --accent: #EAE6FF;
-  --accent-foreground: #412CDD;
-  --destructive: #BA1A1A;
-  --border: #EEEEF2;
-  --input: #E5E7EB;
-  --ring: #5B4CF5;
+  --accent: #e3dfff;
+  --accent-foreground: #120068;
+  --destructive: #ba1a1a;
+  --border: #eeeef2;
+  --input: #e5e7eb;
+  --ring: #5b4cf5;
   --navy: #131627;
-  --chart-1: #5B4CF5;
-  --chart-2: #10B981;
-  --chart-3: #F59E0B;
-  --chart-4: #412CDD;
+  --chart-1: #412cdd;
+  --chart-2: #006c49;
+  --chart-3: #734700;
+  --chart-4: #5b4cf5;
   --chart-5: #747482;
   --radius: 0.625rem;
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #171721;
-  --sidebar-primary: #5B4CF5;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EAE6FF;
-  --sidebar-accent-foreground: #412CDD;
-  --sidebar-border: #EEEEF2;
-  --sidebar-ring: #5B4CF5;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1b1b25;
+  --sidebar-primary: #412cdd;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #efecfb;
+  --sidebar-accent-foreground: #412cdd;
+  --sidebar-border: #eeeef2;
+  --sidebar-ring: #5b4cf5;
 }
 
 [data-canvas="workspace"] {
-  --background: #FAFAFC;
-  --foreground: #171721;
-  --card: #FFFFFF;
-  --card-foreground: #171721;
-  --popover: #FFFFFF;
-  --popover-foreground: #171721;
-  --primary: #5B4CF5;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F5F2FF;
-  --secondary-foreground: #1B1B25;
-  --muted: #F4F4F8;
-  --muted-foreground: #747482;
-  --accent: #EAE6FF;
-  --accent-foreground: #412CDD;
-  --destructive: #BA1A1A;
-  --border: #EEEEF2;
-  --input: #E5E7EB;
-  --ring: #5B4CF5;
-  --navy: #131627;
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #171721;
-  --sidebar-primary: #5B4CF5;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EAE6FF;
-  --sidebar-accent-foreground: #412CDD;
-  --sidebar-border: #EEEEF2;
-  --sidebar-ring: #5B4CF5;
+  --background: #fcf8ff;
+  --foreground: #1b1b25;
+  --card: #ffffff;
+  --card-foreground: #1b1b25;
 }
 
 ::selection {
-  background: rgba(91, 76, 245, 0.16);
-  color: #171721;
+  background: rgba(65, 44, 221, 0.16);
+  color: #1b1b25;
 }
 
 @layer base {
@@ -131,7 +227,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-on-surface antialiased;
   }
   html {
     @apply font-sans;
@@ -139,6 +235,41 @@
   h1, h2, h3, h4 {
     font-family: var(--font-heading);
   }
+}
+
+/* Material Symbols Outlined configuration */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined", sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  user-select: none;
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Stitch surface elevation helpers (paired strictly with hairline borders) */
@@ -154,68 +285,10 @@
   box-shadow: 0 20px 30px -10px rgba(91, 76, 245, 0.08), 0 4px 6px -2px rgba(23, 23, 33, 0.02);
 }
 
-[data-reveal="hidden"] {
-  opacity: 0;
-}
-[data-reveal="visible"] {
-  opacity: 1;
-  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-@media (prefers-reduced-motion: no-preference) {
-  [data-reveal-kind="rise"][data-reveal="hidden"] {
-    transform: translateY(24px);
-  }
-  [data-reveal-kind="rise"][data-reveal="visible"] {
-    transition:
-      opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  [data-reveal-kind="settle"][data-reveal="hidden"] {
-    transform: scale(0.985);
-  }
-  [data-reveal-kind="settle"][data-reveal="visible"] {
-    transition:
-      opacity 700ms cubic-bezier(0.33, 1, 0.68, 1),
-      transform 1100ms cubic-bezier(0.33, 1, 0.68, 1);
-  }
-}
-
-.lines .line {
-  display: block;
-  overflow: hidden;
-  padding-bottom: 0.09em;
-  margin-bottom: -0.09em;
-}
-.lines [data-line] {
-  display: block;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .lines [data-line] {
-    transform: translateY(108%);
-    animation: line-up 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    animation-delay: calc(var(--i, 0) * 110ms + 120ms);
-  }
-  @keyframes line-up {
-    to {
-      transform: none;
-    }
-  }
-}
-
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .tile-photo {
-      animation: tile-drift 1ms linear both;
-      animation-timeline: view();
-      animation-range: entry 15% cover 45%;
-    }
-    @keyframes tile-drift {
-      from {
-        transform: translateY(-4%) scale(1.04);
-      }
-      to {
-        transform: none;
-      }
-    }
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping,
+  .animate-pulse,
+  .animate-bounce {
+    animation: none !important;
   }
 }

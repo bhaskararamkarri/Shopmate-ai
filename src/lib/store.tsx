@@ -1,25 +1,14 @@
 "use client";
 
 /**
- * ShopMate AI — shared cart & comparison state.
+ * ShopMate AI — shared cart, comparison & checkout confirmation receipt state.
  *
- * A deliberately small external store (no state-management library) backed by
- * `useSyncExternalStore`: the cart is a list of {productId, quantity} resolved
- * against the product catalog, and the comparison is an ordered list of product
- * ids. Both persist to localStorage so the badge and contents survive
- * navigation and refresh.
+ * External store backed by `useSyncExternalStore`: cart & compare persist to
+ * `localStorage`, while any active PayPal confirmation receipt persists to
+ * `sessionStorage` (`shopmate.receipt.v1`) so browser refreshes preserve the
+ * receipt and adding a new item or clicking back clears it cleanly.
  *
- * Record resolution: demo products come from the static demo catalog; live
- * Channel3 records arrive inside API responses and are registered in a
- * module-level cache (`registerProducts`). Live lines also persist their
- * product snapshot in storage so a cart/compare survives a reload without a
- * refetch — the snapshot is a display-only cache, never an inventory truth.
- *
- * Storage is hydrated after mount (a no-op on the server snapshot), which
- * keeps the prerendered HTML stable and avoids hydration mismatches.
- *
- * Subtotals here are display values only. In later phases, final totals are
- * recalculated and validated server-side before any payment.
+ * Storage hydrates after mount (never during SSR) to avoid hydration mismatches.
  */
 import {
   createContext,
@@ -34,6 +23,7 @@ import { DEMO_PRODUCT_MAP } from "@/lib/demo-catalog";
 
 const CART_STORAGE_KEY = "shopmate.cart.v3";
 const COMPARE_STORAGE_KEY = "shopmate.compare.v3";
+const RECEIPT_STORAGE_KEY = "shopmate.receipt.v1";
 
 /** Side-by-side space is capped so the comparison table stays readable. */
 export const MAX_COMPARE_ITEMS = 4;
@@ -44,12 +34,26 @@ interface CartLine {
   quantity: number;
 }
 
+export interface ReceiptItemSnapshot {
+  product: Product;
+  quantity: number;
+}
+
+export interface ShopReceiptSnapshot {
+  orderId: string;
+  captureId: string;
+  amount: { currency: string; value: string };
+  purchasedItems: ReceiptItemSnapshot[];
+  capturedAt: string;
+}
+
 interface ShopSnapshot {
   cart: CartLine[];
   compare: string[];
+  receipt: ShopReceiptSnapshot | null;
 }
 
-const EMPTY_SNAPSHOT: ShopSnapshot = { cart: [], compare: [] };
+const EMPTY_SNAPSHOT: ShopSnapshot = { cart: [], compare: [], receipt: null };
 
 /**
  * Client-side cache of live product records seen from catalog API responses.
@@ -111,7 +115,6 @@ function readCartFromStorage(): CartLine[] {
       })
       .filter((entry) => {
         const persisted = entry.product;
-        // Live lines persist their snapshot; accept only plausible ones.
         if (persisted !== undefined) {
           if (!isPlausibleProduct(persisted) || persisted.id !== entry.id) {
             return false;
@@ -140,7 +143,6 @@ function readCompareFromStorage(): string[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    // Legacy v2 shape: a bare array of demo ids.
     if (parsed.every((entry) => typeof entry === "string")) {
       return parsed
         .filter(
@@ -149,7 +151,6 @@ function readCompareFromStorage(): string[] {
         )
         .slice(0, MAX_COMPARE_ITEMS);
     }
-    // v3 shape: ids plus snapshots for live records.
     const stored = parsed.find(
       (entry): entry is StoredCompare =>
         Boolean(
@@ -173,11 +174,60 @@ function readCompareFromStorage(): string[] {
   }
 }
 
+function isPlausibleReceipt(value: unknown): value is ShopReceiptSnapshot {
+  if (!value || typeof value !== "object") return false;
+  const r = value as Partial<ShopReceiptSnapshot>;
+  if (
+    typeof r.orderId !== "string" ||
+    !r.orderId ||
+    typeof r.captureId !== "string" ||
+    !r.captureId ||
+    typeof r.capturedAt !== "string" ||
+    !r.amount ||
+    typeof r.amount.currency !== "string" ||
+    typeof r.amount.value !== "string" ||
+    !Array.isArray(r.purchasedItems)
+  ) {
+    return false;
+  }
+  return r.purchasedItems.every(
+    (item) =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof item.quantity === "number" &&
+      Number.isFinite(item.quantity) &&
+      item.quantity > 0 &&
+      isPlausibleProduct(item.product),
+  );
+}
+
+function readReceiptFromStorage(): ShopReceiptSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(RECEIPT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isPlausibleReceipt(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistReceipt(receipt: ShopReceiptSnapshot | null, hydrated: boolean) {
+  if (!hydrated) return;
+  try {
+    if (receipt === null) {
+      window.sessionStorage.removeItem(RECEIPT_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(RECEIPT_STORAGE_KEY, JSON.stringify(receipt));
+    }
+  } catch {
+    // Storage can be blocked; receipt still exists in memory for the view.
+  }
+}
+
 function persist(snapshot: ShopSnapshot, hydrated: boolean) {
   if (!hydrated) return;
   try {
-    // Live lines persist a display-only product snapshot; demo lines are
-    // resolved statically on load.
     const cartToStore = snapshot.cart.map(
       (line): { id: string; quantity: number; product?: Product } => {
         const product = resolveProduct(line.id);
@@ -202,19 +252,28 @@ function persist(snapshot: ShopSnapshot, hydrated: boolean) {
   } catch {
     // Storage can be full or blocked; the UI keeps working in memory.
   }
+  persistReceipt(snapshot.receipt, hydrated);
 }
 
-/** Module-scope external store: stable actions, hydrate-once semantics. */
+/** Module-scope external store: stable actions, hydrate-once per active mount. */
 function createShopStore() {
   let snapshot = EMPTY_SNAPSHOT;
   let hydrated = false;
+  let dirtyFields = { cart: false, compare: false, receipt: false };
   const listeners = new Set<() => void>();
 
-  function commit(updater: (previous: ShopSnapshot) => ShopSnapshot) {
-    const previous = snapshot;
-    snapshot = updater(previous);
-    persist(snapshot, hydrated);
+  function emit() {
     listeners.forEach((listener) => listener());
+  }
+
+  function commit(
+    updater: (previous: ShopSnapshot) => ShopSnapshot,
+    mutated: Partial<typeof dirtyFields>,
+  ) {
+    Object.assign(dirtyFields, mutated);
+    snapshot = updater(snapshot);
+    persist(snapshot, hydrated);
+    emit();
   }
 
   return {
@@ -231,76 +290,101 @@ function createShopStore() {
     hydrate(): void {
       if (hydrated) return;
       hydrated = true;
-      const cart = readCartFromStorage();
-      const compare = readCompareFromStorage();
-      if (cart.length > 0 || compare.length > 0) {
-        snapshot = { cart, compare };
-        listeners.forEach((listener) => listener());
+      const cart = dirtyFields.cart ? snapshot.cart : readCartFromStorage();
+      const compare = dirtyFields.compare ? snapshot.compare : readCompareFromStorage();
+      const receipt = dirtyFields.receipt ? snapshot.receipt : readReceiptFromStorage();
+      const changed =
+        cart !== snapshot.cart ||
+        compare !== snapshot.compare ||
+        receipt !== snapshot.receipt;
+      snapshot = { cart, compare, receipt };
+      // Flush any pre-hydration mutations (e.g. test child effects) into storage.
+      if (dirtyFields.cart || dirtyFields.compare || dirtyFields.receipt) {
+        persist(snapshot, true);
       }
+      if (changed) {
+        emit();
+      }
+    },
+    resetForUnmount(): void {
+      hydrated = false;
+      dirtyFields = { cart: false, compare: false, receipt: false };
+      snapshot = EMPTY_SNAPSHOT;
     },
     addToCart(productId: string): void {
       if (!resolveProduct(productId)) return;
-      commit((previous) => {
-        const existing = previous.cart.find((line) => line.id === productId);
-        const cart = existing
-          ? previous.cart.map((line) =>
+      commit(
+        (previous) => {
+          const existing = previous.cart.find((line) => line.id === productId);
+          const cart = existing
+            ? previous.cart.map((line) =>
+                line.id === productId
+                  ? {
+                      ...line,
+                      quantity: Math.min(line.quantity + 1, MAX_QUANTITY),
+                    }
+                  : line,
+              )
+            : [...previous.cart, { id: productId, quantity: 1 }];
+          return { ...previous, cart, receipt: null };
+        },
+        { cart: true, receipt: true },
+      );
+    },
+    removeFromCart(productId: string): void {
+      commit(
+        (previous) => ({
+          ...previous,
+          cart: previous.cart.filter((line) => line.id !== productId),
+        }),
+        { cart: true },
+      );
+    },
+    setQuantity(productId: string, quantity: number): void {
+      commit(
+        (previous) => {
+          if (!Number.isFinite(quantity) || quantity < 1) {
+            return {
+              ...previous,
+              cart: previous.cart.filter((line) => line.id !== productId),
+            };
+          }
+          return {
+            ...previous,
+            cart: previous.cart.map((line) =>
               line.id === productId
                 ? {
                     ...line,
-                    quantity: Math.min(line.quantity + 1, MAX_QUANTITY),
+                    quantity: Math.min(Math.round(quantity), MAX_QUANTITY),
                   }
                 : line,
-            )
-          : [...previous.cart, { id: productId, quantity: 1 }];
-        return { ...previous, cart };
-      });
-    },
-    removeFromCart(productId: string): void {
-      commit((previous) => ({
-        ...previous,
-        cart: previous.cart.filter((line) => line.id !== productId),
-      }));
-    },
-    setQuantity(productId: string, quantity: number): void {
-      commit((previous) => {
-        if (!Number.isFinite(quantity) || quantity < 1) {
-          // Quantity zeroing from the stepper removes the line.
-          return {
-            ...previous,
-            cart: previous.cart.filter((line) => line.id !== productId),
+            ),
           };
-        }
-        return {
-          ...previous,
-          cart: previous.cart.map((line) =>
-            line.id === productId
-              ? {
-                  ...line,
-                  quantity: Math.min(Math.round(quantity), MAX_QUANTITY),
-                }
-              : line,
-          ),
-        };
-      });
+        },
+        { cart: true },
+      );
     },
     clearCart(): void {
-      commit((previous) => ({ ...previous, cart: [] }));
+      commit((previous) => ({ ...previous, cart: [] }), { cart: true });
     },
     toggleCompare(productId: string): void {
       if (!resolveProduct(productId)) return;
-      commit((previous) => {
-        if (previous.compare.includes(productId)) {
-          return {
-            ...previous,
-            compare: previous.compare.filter((id) => id !== productId),
-          };
-        }
-        if (previous.compare.length >= MAX_COMPARE_ITEMS) return previous;
-        return { ...previous, compare: [...previous.compare, productId] };
-      });
+      commit(
+        (previous) => {
+          if (previous.compare.includes(productId)) {
+            return {
+              ...previous,
+              compare: previous.compare.filter((id) => id !== productId),
+            };
+          }
+          if (previous.compare.length >= MAX_COMPARE_ITEMS) return previous;
+          return { ...previous, compare: [...previous.compare, productId] };
+        },
+        { compare: true },
+      );
     },
     clearCompare(): void {
-      commit((previous) => ({ ...previous, compare: [] }));
+      commit((previous) => ({ ...previous, compare: [] }), { compare: true });
     },
     setCompare(ids: string[]): void {
       const seen = new Set<string>();
@@ -313,12 +397,25 @@ function createShopStore() {
           if (valid.length >= MAX_COMPARE_ITEMS) break;
         }
       }
-      commit((previous) => ({ ...previous, compare: valid }));
+      commit((previous) => ({ ...previous, compare: valid }), { compare: true });
+    },
+    setActiveReceipt(receipt: ShopReceiptSnapshot): void {
+      commit(
+        (previous) => ({ ...previous, receipt }),
+        { receipt: true },
+      );
+    },
+    clearActiveReceipt(): void {
+      commit(
+        (previous) => ({ ...previous, receipt: null }),
+        { receipt: true },
+      );
     },
   };
 }
 
 const shopStore = createShopStore();
+let mountedProviders = 0;
 
 interface ShopContextValue {
   cartLines: CartLine[];
@@ -341,6 +438,10 @@ interface ShopContextValue {
   isComparing: (productId: string) => boolean;
   /** False only when the item is unselected and the comparison is full. */
   canToggleCompare: (productId: string) => boolean;
+  /** Active captured sandbox confirmation receipt, persisted in sessionStorage. */
+  activeReceipt: ShopReceiptSnapshot | null;
+  setActiveReceipt: (receipt: ShopReceiptSnapshot) => void;
+  clearActiveReceipt: () => void;
 }
 
 const ShopContext = createContext<ShopContextValue | null>(null);
@@ -352,9 +453,16 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     shopStore.getServerSnapshot,
   );
 
-  // Hydration happens after mount; the store notifies subscribers below.
+  // Hydrate after mount and clean up in-memory singleton when all providers unmount.
   useEffect(() => {
+    mountedProviders += 1;
     shopStore.hydrate();
+    return () => {
+      mountedProviders = Math.max(0, mountedProviders - 1);
+      if (mountedProviders === 0) {
+        shopStore.resetForUnmount();
+      }
+    };
   }, []);
 
   const value = useMemo<ShopContextValue>(() => {
@@ -374,7 +482,6 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     return {
       cartLines: snapshot.cart,
       cartItems,
-      /** True when any live (non-demo) record sits in the cart. */
       hasLiveItems: cartItems.some((item) => item.product.source === "channel3"),
       cartCount: cartItems.reduce((sum, item) => sum + item.quantity, 0),
       cartSubtotal: cartItems.reduce(
@@ -396,6 +503,9 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       canToggleCompare: (productId: string) =>
         compareSet.has(productId) ||
         snapshot.compare.length < MAX_COMPARE_ITEMS,
+      activeReceipt: snapshot.receipt,
+      setActiveReceipt: shopStore.setActiveReceipt,
+      clearActiveReceipt: shopStore.clearActiveReceipt,
     };
   }, [snapshot]);
 
