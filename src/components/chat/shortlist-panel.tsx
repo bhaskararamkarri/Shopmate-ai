@@ -48,22 +48,22 @@ export function ShortlistPanel({
     addToCart(id);
     setJustAddedCartId(id);
     setTimeout(() => {
-      setJustAddedCartId(null);
+      setJustAddedCartId((curr) => (curr === id ? null : curr));
     }, 1800);
   };
 
   return (
     <aside
       aria-label="Live product shortlist & decision insights"
-      className="flex h-full w-full flex-col overflow-y-auto bg-card p-4"
+      className="flex h-full w-full flex-col overflow-y-auto bg-surface p-4"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border pb-3">
+      <div className="flex items-center justify-between border-b border-border-subtle pb-3">
         <div className="flex items-center gap-2">
-          <span className="grid size-7 place-items-center rounded-lg bg-secondary text-primary">
+          <span className="grid size-7 place-items-center rounded-lg bg-surface-container text-primary">
             <Award className="size-3.5" aria-hidden="true" />
           </span>
-          <h2 className="text-sm font-semibold tracking-tight text-foreground">
+          <h2 className="text-sm font-semibold tracking-tight text-on-surface">
             Live Shortlist
           </h2>
         </div>
@@ -98,19 +98,19 @@ export function ShortlistPanel({
       <div className="mt-4 flex-1 space-y-4">
         {pending && products.length === 0 ? (
           <div className="space-y-3 py-2">
-            <div className="h-44 animate-pulse rounded-2xl border border-border bg-muted/60" />
-            <div className="h-44 animate-pulse rounded-2xl border border-border bg-muted/60" />
+            <div className="h-44 animate-pulse rounded-2xl border border-border-subtle bg-surface-container-low" />
+            <div className="h-44 animate-pulse rounded-2xl border border-border-subtle bg-surface-container-low" />
           </div>
         ) : products.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-input bg-background p-6 text-center">
-            <div className="grid size-12 place-items-center rounded-2xl border border-primary/15 bg-secondary text-primary">
+          <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-outline-variant bg-surface-card p-6 text-center">
+            <div className="grid size-12 place-items-center rounded-2xl bg-surface-container text-primary">
               <Sparkles className="size-5" />
             </div>
-            <h3 className="mt-3 text-sm font-semibold text-foreground">
+            <h3 className="mt-3 text-sm font-semibold text-on-surface">
               No products shortlisted yet
             </h3>
-            <p className="mt-1 max-w-[230px] text-xs leading-relaxed text-muted-foreground">
-              Describe your needs in chat or refine requirements on the left to inspect verified picks here.
+            <p className="mt-1 max-w-[230px] text-xs leading-relaxed text-text-muted">
+              Describe your needs in chat or refine requirements in Context to inspect verified picks here.
             </p>
           </div>
         ) : (
@@ -129,28 +129,29 @@ export function ShortlistPanel({
                 <li
                   key={product.id}
                   className={cn(
-                    "stitch-tier-1 group relative flex flex-col rounded-2xl border bg-background p-3.5 transition-all hover:border-primary/40 hover:shadow-[0_10px_25px_-5px_rgba(23,23,33,0.06)]",
-                    isTopPick ? "border-border border-l-2 border-l-primary" : "border-border",
+                    "group relative flex flex-col rounded-2xl border bg-surface-card p-3.5 shadow-sm transition-all hover:border-primary/40",
+                    isTopPick
+                      ? "border-border-subtle border-l-4 border-l-primary-container"
+                      : "border-border-subtle border-l-4 border-l-secondary",
                   )}
                 >
-                  {/* Badge Row */}
                   <div className="flex items-center justify-between gap-2 pb-2.5">
                     {badge ? (
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide",
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide",
                           badge === "Best Overall"
-                            ? "border-amber-500/25 bg-amber-500/10 text-[#B45309]"
+                            ? "bg-primary-fixed text-on-primary-fixed"
                             : badge === "Best Value"
-                              ? "border-emerald-500/25 bg-emerald-500/10 text-[#047857]"
-                              : "border-primary/25 bg-secondary text-primary",
+                              ? "bg-secondary-container text-on-secondary-container"
+                              : "bg-surface-container text-primary",
                         )}
                       >
                         <Award className="size-3 shrink-0" />
                         {badge}
                       </span>
                     ) : (
-                      <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-text-muted">
                         {product.brand || "Catalog Option"}
                       </span>
                     )}
@@ -158,22 +159,25 @@ export function ShortlistPanel({
                     <ProductProvenanceBadge product={product} showMerchant={false} />
                   </div>
 
-                  {/* Product Info Row */}
                   <div className="flex gap-3">
-                    <div className="relative size-16 shrink-0 overflow-hidden rounded-xl border border-border bg-card">
-                      <ProductImage product={product} variant="thumb" className="size-full rounded-none border-0" />
+                    <div className="relative size-16 shrink-0 overflow-hidden rounded-xl border border-border-subtle bg-canvas-bg">
+                      <ProductImage
+                        product={product}
+                        variant="thumb"
+                        className="size-full rounded-none border-0"
+                      />
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <h4 className="line-clamp-2 text-xs font-semibold leading-snug text-foreground">
+                      <h4 className="line-clamp-2 text-xs font-semibold leading-snug text-on-surface">
                         {product.name}
                       </h4>
                       <div className="mt-1 flex items-baseline gap-1.5">
-                        <span className="font-mono text-sm font-bold text-foreground">
+                        <span className="font-mono text-sm font-bold text-primary">
                           {formatMoney(product.price, product.currency || "USD")}
                         </span>
                         {product.merchant ? (
-                          <span className="truncate text-[11px] text-muted-foreground">
+                          <span className="truncate text-[11px] text-text-muted">
                             via {product.merchant}
                           </span>
                         ) : null}
@@ -181,32 +185,28 @@ export function ShortlistPanel({
                     </div>
                   </div>
 
-                  {/* Decision Insight: Why this matches */}
                   {insight?.whyItMatches ? (
-                    <div className="mt-3 rounded-xl border border-border bg-card p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                      <span className="font-semibold text-foreground">Why it fits: </span>
+                    <div className="mt-3 rounded-xl bg-surface-container-low p-2.5 text-[11px] leading-relaxed text-on-surface-variant">
+                      <span className="font-semibold text-on-surface">Why it fits: </span>
                       {insight.whyItMatches}
                     </div>
                   ) : null}
 
-                  {/* Failed Requirements Notice */}
                   {insight?.failedRequirements && insight.failedRequirements.length > 0 ? (
-                    <div className="mt-2 rounded-xl border border-destructive/25 bg-destructive/10 p-2 text-[11px] leading-relaxed text-destructive">
+                    <div className="mt-2 rounded-xl border border-error/25 bg-error-container/60 p-2 text-[11px] leading-relaxed text-on-error-container">
                       <span className="font-semibold">Unmet requirement: </span>
                       {insight.failedRequirements[0]}
                     </div>
                   ) : null}
 
-                  {/* Decision Insight: Key Trade-off */}
                   {insight?.tradeOffs && insight.tradeOffs.length > 0 ? (
-                    <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-2 text-[11px] leading-relaxed text-muted-foreground">
-                      <span className="font-semibold text-[#B45309]">Trade-off: </span>
+                    <div className="mt-2 rounded-xl bg-surface-container-highest/70 p-2 text-[11px] leading-relaxed text-on-surface-variant">
+                      <span className="font-semibold text-tertiary">Trade-off: </span>
                       {insight.tradeOffs[0]}
                     </div>
                   ) : null}
 
-                  {/* Primary Action Buttons (positioned prominently before specs drawer for clean tab order & QA consistency) */}
-                  <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
+                  <div className="mt-3 flex items-center gap-2 border-t border-border-subtle pt-2.5">
                     <Button
                       type="button"
                       size="sm"
@@ -216,8 +216,8 @@ export function ShortlistPanel({
                     >
                       {isAddedJustNow ? (
                         <>
-                          <Check className="mr-1 size-3.5 text-emerald-600" />
-                          Added!
+                          <Check className="mr-1 size-3.5 text-secondary" />
+                          In Cart (Added)
                         </>
                       ) : inCart ? (
                         <>
@@ -240,30 +240,22 @@ export function ShortlistPanel({
                       onClick={() => toggleCompare(product.id)}
                       className={cn(
                         "h-8 px-2.5 text-xs font-medium",
-                        comparing && "border-primary/40 bg-accent text-accent-foreground font-semibold",
+                        comparing && "border-primary/40 bg-surface-container text-primary font-semibold",
                       )}
-                      title={
-                        !comparing && !canCompare
-                          ? "Maximum 4 products in comparison"
-                          : comparing
-                            ? "Remove from comparison"
-                            : "Add to side-by-side comparison"
-                      }
                     >
                       <Scale className="mr-1 size-3" />
                       {comparing ? "Comparing" : "Compare"}
                     </Button>
                   </div>
 
-                  {/* Expandable Deep Breakdown */}
                   {insight ? (
-                    <div className="mt-2 border-t border-border/70 pt-2">
+                    <div className="mt-2 border-t border-border-subtle/80 pt-2">
                       <button
                         type="button"
                         onClick={() =>
                           setExpandedDetailsId(isExpanded ? null : product.id)
                         }
-                        className="flex w-full items-center justify-between text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                        className="flex w-full items-center justify-between text-[11px] font-medium text-text-muted transition-colors hover:text-on-surface"
                       >
                         <span>
                           {isExpanded ? "Hide details" : "View specifications & checks"}
@@ -279,10 +271,10 @@ export function ShortlistPanel({
                         <div className="mt-2 space-y-2 text-[11px]">
                           {insight.requirementsSatisfied.length > 0 ? (
                             <div>
-                              <p className="font-semibold text-foreground">
+                              <p className="font-semibold text-on-surface">
                                 Satisfied requirements:
                               </p>
-                              <ul className="mt-1 space-y-0.5 text-[#047857]">
+                              <ul className="mt-1 space-y-0.5 text-secondary">
                                 {insight.requirementsSatisfied.map((item, idx) => (
                                   <li key={idx} className="flex items-start gap-1">
                                     <CheckCircle2 className="mt-0.5 size-3 shrink-0" />
@@ -296,13 +288,13 @@ export function ShortlistPanel({
                           {insight.failedRequirements &&
                           insight.failedRequirements.length > 0 ? (
                             <div>
-                              <p className="font-semibold text-destructive">
+                              <p className="font-semibold text-error">
                                 Unmet mandatory criteria:
                               </p>
-                              <ul className="mt-1 space-y-0.5 text-destructive">
+                              <ul className="mt-1 space-y-0.5 text-error">
                                 {insight.failedRequirements.map((item, idx) => (
                                   <li key={idx} className="flex items-start gap-1">
-                                    <span className="font-bold">✕</span>
+                                    <span className="font-bold">x</span>
                                     <span>{item}</span>
                                   </li>
                                 ))}
@@ -312,13 +304,13 @@ export function ShortlistPanel({
 
                           {insight.missingOrUnverified.length > 0 ? (
                             <div>
-                              <p className="font-semibold text-foreground">
+                              <p className="font-semibold text-on-surface">
                                 Missing / Unverified:
                               </p>
-                              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                              <ul className="mt-1 space-y-0.5 text-text-muted">
                                 {insight.missingOrUnverified.map((item, idx) => (
                                   <li key={idx} className="flex items-start gap-1">
-                                    <HelpCircle className="mt-0.5 size-3 shrink-0 text-muted-foreground/80" />
+                                    <HelpCircle className="mt-0.5 size-3 shrink-0" />
                                     <span>{item}</span>
                                   </li>
                                 ))}
@@ -327,11 +319,11 @@ export function ShortlistPanel({
                           ) : null}
 
                           {insight.whoShouldChoose ? (
-                            <div className="rounded-lg bg-secondary/80 p-2">
-                              <span className="font-semibold text-foreground">
+                            <div className="rounded-lg bg-surface-container-low p-2">
+                              <span className="font-semibold text-on-surface">
                                 Who should buy:{" "}
                               </span>
-                              <span className="text-muted-foreground">
+                              <span className="text-text-muted">
                                 {insight.whoShouldChoose}
                               </span>
                             </div>

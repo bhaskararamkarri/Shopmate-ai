@@ -9,13 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  Award,
-  BotMessageSquare,
-  Eraser,
-  MessageSquare,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Award, Check, Eraser, MessageSquare, SlidersHorizontal } from "lucide-react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,8 +58,11 @@ function failureReply(failure: ChatApiFailure, query: string) {
 }
 
 function scrollToBottom(node: HTMLElement | null) {
-  if (!node) return;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!node || typeof node.scrollTo !== "function") return;
+  const reduce =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   node.scrollTo({ top: node.scrollHeight, behavior: reduce ? "auto" : "smooth" });
 }
 
@@ -74,10 +71,10 @@ type MobileTab = "chat" | "requirements" | "shortlist";
 /**
  * Intelligent AI Shopping Decision Workspace (Stitch Desktop 07 / Mobile 02).
  *
- * 3-Column responsive light layout on Desktop:
- * - Left: Shopping context, active requirements & interactive refinement chips
- * - Center: Conversation stream, natural-language dialog & floating glass composer
- * - Right: Live curated shortlist & evidence-backed decision insights
+ * Strictly 2-column responsive light layout on Desktop:
+ * - Left (lg:col-span-4 xl:col-span-3): Active stream, constraints, extracted catalog metrics
+ * - Right (lg:col-span-8 xl:col-span-9): Wide chat stream with 2-up inline Synthesis Cards + floating omni-prompt dock
+ * - Mobile (< lg): Segmented Chat | Context | Shortlist tabs with ShortlistPanel rendered on-demand
  */
 export function ChatClient({ initialQuery }: { initialQuery?: string }) {
   const searchParams = useSearchParams();
@@ -89,6 +86,7 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
   );
   const [pending, setPending] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  const [exportedFeedback, setExportedFeedback] = useState(false);
   const sendSeqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const autoSentRef = useRef(false);
@@ -120,6 +118,12 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
   const shortlistedRecommendations =
     latestAssistantMessage?.recommendations ?? [];
   const currentIntent = latestIntentMessage?.intent ?? null;
+
+  const activeTopic =
+    currentIntent?.productCategory ||
+    currentIntent?.category ||
+    currentIntent?.query ||
+    "Decision Workspace";
 
   const criteriaCount = useMemo(() => {
     if (!currentIntent) return 0;
@@ -255,6 +259,28 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     chatStore.replaceAll([]);
   }, []);
 
+  const handleExportThread = useCallback(() => {
+    if (messages.length === 0) return;
+    const markdown = messages
+      .map((m) => `### ${m.role === "user" ? "You" : "ShopMate Copilot"}\n${m.content}`)
+      .join("\n\n");
+    try {
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `shopmate-thread-${Date.now()}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      setExportedFeedback(true);
+      setTimeout(() => setExportedFeedback(false), 1800);
+    } catch {
+      // Ignore export errors cleanly
+    }
+  }, [messages]);
+
   useEffect(() => {
     chatStore.hydrate();
   }, []);
@@ -289,52 +315,70 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
     <div
       data-canvas="workspace"
       aria-label="AI shopping workspace"
-      className="flex h-[calc(100svh-4rem)] w-full flex-col overflow-hidden bg-background"
+      className="flex h-[calc(100svh-8rem)] w-full flex-col overflow-hidden bg-surface lg:h-[calc(100svh-4rem)]"
     >
-      {/* Top Context Header */}
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 py-2.5 md:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-primary/15 bg-secondary text-primary">
-              <BotMessageSquare className="size-4" />
+      {/* Top Meta Ribbon (Desktop 07) & Active Research Bar (Mobile 02) */}
+      <header className="shrink-0 border-b border-border-subtle bg-surface-container-low lg:bg-surface">
+        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3 px-4 py-2.5 md:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-high px-2.5 py-1 text-[11px] font-semibold tracking-wide text-primary">
+              <span
+                className="material-symbols-outlined text-[14px]"
+                aria-hidden="true"
+              >
+                psychology
+              </span>
+              <span>SHOPMATE WORKSPACE</span>
             </span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-sm font-semibold tracking-tight text-foreground">
-                  ShopMate Decision Workspace
-                </h1>
-                <span
-                  className={cn(
-                    "hidden sm:inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                    pending
-                      ? "bg-primary/10 text-primary"
-                      : "bg-emerald-500/10 text-[#047857]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      pending ? "bg-primary animate-pulse" : "bg-emerald-500",
-                    )}
-                    aria-hidden="true"
-                  />
-                  {pending ? "Evaluating..." : "Ready"}
-                </span>
-              </div>
-              <p className="hidden truncate text-[12px] text-muted-foreground sm:block">
-                Evaluates verified catalog trade-offs, budget constraints, and merchant offers
-              </p>
-            </div>
+            <span className="hidden text-xs text-text-muted sm:inline">/</span>
+            <h1 className="truncate text-sm font-semibold tracking-tight text-on-surface md:text-base">
+              {activeTopic}
+            </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-1.5 rounded-md bg-surface-container-low px-2.5 py-1 font-mono text-[11px] text-text-muted md:flex">
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  pending ? "animate-pulse bg-primary" : "bg-secondary",
+                )}
+                aria-hidden="true"
+              />
+              <span>{pending ? "Evaluating…" : "Decision Engine Ready"}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExportThread}
+              disabled={messages.length === 0}
+              className="hidden items-center gap-1 rounded-md border border-border-subtle bg-surface-card px-2.5 py-1 text-xs font-medium text-on-surface-variant shadow-2xs transition-colors hover:bg-surface-container disabled:opacity-45 sm:inline-flex"
+            >
+              {exportedFeedback ? (
+                <>
+                  <Check className="size-3.5 text-secondary" aria-hidden="true" />
+                  <span>Exported</span>
+                </>
+              ) : (
+                <>
+                  <span
+                    className="material-symbols-outlined text-[15px]"
+                    aria-hidden="true"
+                  >
+                    ios_share
+                  </span>
+                  <span>Export Thread</span>
+                </>
+              )}
+            </button>
+
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={clearConversation}
               aria-label="Reset workspace"
-              className="h-8 text-xs font-medium"
+              className="h-7 rounded-md border-border-subtle bg-surface-card px-2.5 text-xs font-medium text-on-surface-variant"
             >
               <Eraser className="mr-1 size-3.5" aria-hidden="true" />
               Reset
@@ -343,21 +387,21 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
         </div>
 
         {/* Mobile Segmented Navigation Tabs (< lg) */}
-        <div className="flex border-t border-border bg-muted/40 px-3 py-1.5 lg:hidden">
+        <div className="flex border-t border-border-subtle bg-surface-container-low px-3 py-1.5 lg:hidden">
           <button
             type="button"
             onClick={() => setMobileTab("chat")}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors",
               mobileTab === "chat"
-                ? "bg-card text-foreground shadow-2xs"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-surface-card text-on-surface shadow-xs"
+                : "text-text-muted hover:text-on-surface",
             )}
           >
             <MessageSquare className="size-3.5" />
             <span>Chat</span>
             {pending ? (
-              <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="size-1.5 animate-pulse rounded-full bg-primary" />
             ) : null}
           </button>
 
@@ -367,8 +411,8 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors",
               mobileTab === "requirements"
-                ? "bg-card text-foreground shadow-2xs"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-surface-card text-on-surface shadow-xs"
+                : "text-text-muted hover:text-on-surface",
             )}
           >
             <SlidersHorizontal className="size-3.5" />
@@ -386,8 +430,8 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors",
               mobileTab === "shortlist"
-                ? "bg-card text-foreground shadow-2xs"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-surface-card text-on-surface shadow-xs"
+                : "text-text-muted hover:text-on-surface",
             )}
           >
             <Award className="size-3.5" />
@@ -401,116 +445,118 @@ export function ChatClient({ initialQuery }: { initialQuery?: string }) {
         </div>
       </header>
 
-      {/* Main 3-Column Body */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Column: Requirements & Refinements */}
-        <div className="hidden h-full w-72 shrink-0 overflow-hidden border-r border-border lg:block xl:w-80">
+      {/* Main Strictly 2-Column Body on Desktop (lg+) */}
+      <div className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-12 gap-6 overflow-hidden px-4 pt-4 md:px-6 lg:px-8">
+        {/* Left Rail: Requirements & Refinements (Desktop only when chat tab active; avoid duplicate DOM on mobile tab) */}
+        <div
+          className={cn(
+            "h-full overflow-y-auto pb-6 no-scrollbar",
+            mobileTab === "requirements"
+              ? "col-span-12 lg:col-span-4 xl:col-span-3"
+              : "hidden lg:col-span-4 lg:block xl:col-span-3",
+          )}
+        >
           <RequirementsPanel
             intent={currentIntent}
+            products={shortlistedProducts}
             onRefine={handleRefine}
+            onReset={clearConversation}
             pending={pending}
           />
         </div>
 
-        {/* Center Column: Conversation & Composer */}
+        {/* Wide Conversation Stream & Omni-Prompt Dock (col-span-12 lg:col-span-8 xl:col-span-9) */}
         <div
           className={cn(
-            "h-full min-w-0 flex-1 flex-col overflow-hidden bg-background",
+            "col-span-12 h-full min-w-0 flex-col overflow-hidden lg:col-span-8 xl:col-span-9",
             mobileTab !== "chat" ? "hidden lg:flex" : "flex",
           )}
         >
           <div
             ref={scrollerRef}
-            className="flex-1 overflow-y-auto overscroll-contain px-4 py-6 md:px-6"
+            className="flex-1 overflow-y-auto overscroll-contain pb-4 pr-1 no-scrollbar"
           >
             {showEmptyState ? (
-              <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center py-4 text-center">
-                <span className="grid size-14 place-items-center rounded-2xl border border-primary/15 bg-secondary text-primary stitch-tier-1">
-                  <BotMessageSquare className="size-6" aria-hidden="true" />
-                </span>
-                <h2 className="mt-5 text-xl font-bold tracking-tight text-foreground">
-                  ShopMate Decision Workspace
-                </h2>
-                <p className="mt-2 max-w-md text-[14px] leading-relaxed text-muted-foreground">
-                  Tell ShopMate what you need. It inspects verified catalog specs,
-                  weighs honest trade-offs, and explains why a product fits.
-                </p>
-                <ul className="mt-6 grid w-full gap-2.5 sm:grid-cols-2">
-                  {DEMO_PROMPTS.map((prompt) => (
-                    <li key={prompt}>
-                      <button
-                        type="button"
-                        onClick={() => void send(prompt)}
-                        className="stitch-tier-1 h-full w-full rounded-xl border border-border bg-card px-4 py-3 text-left text-xs font-medium leading-snug text-foreground transition-all hover:border-primary/40 hover:bg-secondary/60"
-                      >
-                        {prompt}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-6 text-[12px] text-muted-foreground">
-                  Grounded in live Channel3 listings with transparent fallback notices.
-                </p>
+              <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center py-6 text-center">
+                <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-1 text-xs font-medium text-text-muted shadow-2xs">
+                  <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                  <span>ShopMate Engine • Grounded in live catalog specifications</span>
+                </div>
+
+                <div className="w-full rounded-2xl border border-border-subtle bg-surface-card p-6 shadow-sm md:p-8">
+                  <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-sm">
+                    <span className="material-symbols-outlined text-[26px]" aria-hidden="true">
+                      auto_awesome
+                    </span>
+                  </span>
+                  <h2 className="mt-4 text-xl font-bold tracking-tight text-on-surface">
+                    ShopMate Research Copilot
+                  </h2>
+                  <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-on-surface-variant">
+                    Tell ShopMate what you need. It inspects verified catalog specs,
+                    evaluates honest trade-offs, and renders side-by-side picks inline.
+                  </p>
+
+                  <ul className="mt-6 grid w-full gap-2.5 sm:grid-cols-2">
+                    {DEMO_PROMPTS.map((prompt) => (
+                      <li key={prompt}>
+                        <button
+                          type="button"
+                          onClick={() => void send(prompt)}
+                          className="h-full w-full rounded-xl border border-border-subtle bg-surface-container-low px-4 py-3 text-left text-xs font-medium leading-snug text-on-surface transition-all hover:border-primary/40 hover:bg-surface-container hover:text-primary"
+                        >
+                          {prompt}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             ) : (
               <div
                 role="list"
                 aria-label="Conversation messages"
-                className="mx-auto flex max-w-2xl flex-col gap-5"
+                className="flex flex-col gap-5 pb-4"
               >
+                <div className="flex items-center justify-center">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-1 text-xs text-text-muted shadow-2xs">
+                    <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                    <span>
+                      ShopMate Engine • Recommendations grounded strictly in verified catalog records
+                    </span>
+                  </div>
+                </div>
+
                 {messages.map((message) => (
                   <ChatMessageItem
                     key={message.id}
                     message={message}
                     onRetry={send}
+                    onFollowUp={(followUp) => void send(followUp)}
                   />
                 ))}
+
                 {pending ? (
                   <LoadingState
                     variant="product-grid"
-                    className="mx-auto w-full max-w-xl"
+                    className="mx-auto w-full"
                   />
                 ) : null}
               </div>
             )}
           </div>
 
-          <footer className="border-t border-border bg-background/95 p-3 md:px-6">
-            <div className="mx-auto w-full max-w-2xl">
-              <ChatInput
-                pending={pending}
-                onSubmit={(value) => void send(value)}
-              />
-              <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                Recommendations are grounded strictly in real catalog specifications, prices, and merchant offers.
-              </p>
-            </div>
+          <footer className="shrink-0 pb-3 pt-2">
+            <ChatInput
+              pending={pending}
+              onSubmit={(value) => void send(value)}
+            />
           </footer>
         </div>
 
-        {/* Right Column: Live Shortlist */}
-        <div className="hidden h-full w-80 shrink-0 overflow-hidden border-l border-border lg:block xl:w-96">
-          <ShortlistPanel
-            products={shortlistedProducts}
-            recommendations={shortlistedRecommendations}
-            pending={pending}
-          />
-        </div>
-
-        {/* Mobile Tab: Requirements */}
-        {mobileTab === "requirements" ? (
-          <div className="h-full flex-1 overflow-hidden lg:hidden">
-            <RequirementsPanel
-              intent={currentIntent}
-              onRefine={handleRefine}
-              pending={pending}
-            />
-          </div>
-        ) : null}
-
-        {/* Mobile Tab: Shortlist */}
+        {/* Mobile Tab: Shortlist (< lg ONLY when tab selected) */}
         {mobileTab === "shortlist" ? (
-          <div className="h-full flex-1 overflow-hidden lg:hidden">
+          <div className="col-span-12 h-full overflow-y-auto pb-6 lg:hidden">
             <ShortlistPanel
               products={shortlistedProducts}
               recommendations={shortlistedRecommendations}
